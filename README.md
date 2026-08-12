@@ -1,8 +1,10 @@
-# After School Presence
+# HIMAWA
 
 中高生が、仲の良い友達へ毎回「今ひま？」と聞かなくても、放課後の“遊べそうな気配”をアバターで確認できる招待制Webアプリです。
 
-> Status: Planning / MVP preparation
+> Status: MVP development
+
+**Beta:** https://himawa-social-2026.web.app
 
 ## コンセプト
 
@@ -58,10 +60,9 @@ Web版では、ホーム画面のPWAアイコンから友達ボードを直接�
 
 ### Backend / Infrastructure
 
-- Supabase Auth
-- Supabase PostgreSQL + Row Level Security
-- Supabase Realtime
-- Cloudflare Pages
+- Firebase Authentication
+- Cloud Firestore + Security Rules
+- Firebase Hosting
 - GitHub Actions
 
 無料枠を利用し、MVPの追加運用費を0円に抑える方針です。
@@ -81,16 +82,16 @@ Web版では、ホーム画面のPWAアイコンから友達ボードを直接�
 - [x] サービス企画 v0.1
 - [x] MVPスコープ決定
 - [x] 技術構成の仮決定
-- [ ] サービス名・ビジュアル方向の決定
-- [ ] スマートフォンUIモック
-- [ ] PWAプロジェクト作成
-- [ ] 認証・プロフィール
-- [ ] アバター作成
-- [ ] ステータス更新
-- [ ] 友達招待・相互承認
-- [ ] 友達ボード・Realtime更新
-- [ ] 定型Poke
-- [ ] ブロック・通報・退会
+- [x] サービス名・ビジュアル方向の決定
+- [x] スマートフォンUI初稿
+- [x] PWAプロジェクト作成
+- [x] 認証・プロフィール
+- [x] アバター作成
+- [x] ステータス更新
+- [x] 友達招待・相互承認
+- [x] 友達ボード・Realtime更新
+- [x] 定型Poke
+- [x] ブロック・通報・退会
 - [ ] クローズドベータ
 
 ## 初期ロードマップ
@@ -102,6 +103,23 @@ Web版では、ホーム画面のPWAアイコンから友達ボードを直接�
 5. 15〜30人の招待制クローズドベータ
 
 個人開発で、6〜10週間程度のMVP完成を初期目安としています。
+
+## ローカル開発
+
+```bash
+npm install
+npm run dev
+```
+
+### 検証
+
+```bash
+npm run build
+npm test
+firebase emulators:exec --only firestore --project himawa-rules-test "npm run test:rules"
+```
+
+Firebaseの接続先は無料Sparkプランの `himawa-social-2026` です。Firestoreルールは、友達以外のプロフィール閲覧、コード一覧取得、ブロック後の閲覧を拒否します。
 
 ## 開発方針
 

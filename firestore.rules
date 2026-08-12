@@ -1,0 +1,137 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isFriend(uid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(uid));
+    }
+
+    function isBlocked(uid) {
+      return signedIn() && (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)/blocks/$(uid))
+        || exists(/databases/$(database)/documents/users/$(uid)/blocks/$(request.auth.uid))
+      );
+    }
+
+    function validAvatar(avatar) {
+      return avatar is map
+        && avatar.keys().hasOnly(['skin', 'hair', 'outfit', 'background'])
+        && avatar.skin is string
+        && avatar.hair is string
+        && avatar.outfit is string
+        && avatar.background is string;
+    }
+
+    function validProfile(uid) {
+      return request.resource.data.keys().hasOnly([
+          'uid', 'displayName', 'friendCode', 'avatar', 'currentStatus', 'createdAt'
+        ])
+        && request.resource.data.uid == uid
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2
+        && request.resource.data.displayName.size() <= 12
+        && request.resource.data.friendCode is string
+        && request.resource.data.friendCode.size() == 6
+        && validAvatar(request.resource.data.avatar);
+    }
+
+    match /users/{uid} {
+      allow get: if isOwner(uid) || (isFriend(uid) && !isBlocked(uid));
+      allow list: if false;
+      allow create: if isOwner(uid) && validProfile(uid);
+      allow update: if isOwner(uid)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.friendCode == resource.data.friendCode
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(uid);
+
+      match /friends/{friendUid} {
+        allow read: if isOwner(uid);
+        allow create: if signedIn()
+          && (request.auth.uid == uid || request.auth.uid == friendUid)
+          && request.resource.data.uid == friendUid
+          && request.resource.data.requestId is string
+          && validAcceptedRequest(request.resource.data.requestId, uid, friendUid);
+        allow update: if false;
+        allow delete: if signedIn() && (request.auth.uid == uid || request.auth.uid == friendUid);
+      }
+
+      match /blocks/{blockedUid} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+    }
+
+    function validAcceptedRequest(requestId, uid, friendUid) {
+      let friendRequest = getAfter(/databases/$(database)/documents/friendRequests/$(requestId)).data;
+      return friendRequest.status == 'accepted'
+        && (
+          (friendRequest.fromUid == uid && friendRequest.toUid == friendUid)
+          || (friendRequest.fromUid == friendUid && friendRequest.toUid == uid)
+        );
+    }
+
+    match /codes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.friendCode == code;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /friendRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid is string
+        && request.resource.data.toUid != request.auth.uid
+        && request.resource.data.status == 'pending'
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.toUid));
+      allow read: if signedIn()
+        && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow update: if signedIn()
+        && resource.data.toUid == request.auth.uid
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedAt'])
+        && request.resource.data.status in ['accepted', 'declined'];
+      allow delete: if signedIn()
+        && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+    }
+
+    match /pokes/{pokeId} {
+      allow create: if signedIn()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid is string
+        && request.resource.data.kind in ['play', 'game', 'talk', 'cheer']
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(request.resource.data.toUid))
+        && !isBlocked(request.resource.data.toUid);
+      allow read: if signedIn()
+        && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow update: if signedIn()
+        && resource.data.toUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+      allow delete: if signedIn()
+        && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+    }
+
+    match /reports/{reportId} {
+      allow create: if signedIn()
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.targetUid != request.auth.uid;
+      allow read, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
