@@ -11,14 +11,16 @@ export const DEFAULT_AVATAR: AvatarConfig = { skin: 'peach', hair: 'ink', outfit
 
 export function Avatar({ config, size = 'medium', status }: Props) {
   return (
-    <div className={`avatar avatar--${size}`} style={{ background: backgroundColors[config.background] ?? backgroundColors.cream }} aria-label="アバター">
-      <div className="avatar__body" style={{ background: outfitColors[config.outfit] ?? outfitColors.tomato }} />
-      <div className="avatar__neck" style={{ background: skinColors[config.skin] ?? skinColors.peach }} />
-      <div className="avatar__head" style={{ background: skinColors[config.skin] ?? skinColors.peach }}>
-        <div className="avatar__hair" style={{ background: hairColors[config.hair] ?? hairColors.ink }} />
-        <span className="avatar__eye avatar__eye--left" />
-        <span className="avatar__eye avatar__eye--right" />
-        <span className="avatar__smile" />
+    <div className={`avatar avatar--${size}`} aria-label="アバター">
+      <div className="avatar__canvas" style={{ background: backgroundColors[config.background] ?? backgroundColors.cream }}>
+        <div className="avatar__body" style={{ background: outfitColors[config.outfit] ?? outfitColors.tomato }} />
+        <div className="avatar__neck" style={{ background: skinColors[config.skin] ?? skinColors.peach }} />
+        <div className="avatar__head" style={{ background: skinColors[config.skin] ?? skinColors.peach }}>
+          <div className="avatar__hair" style={{ background: hairColors[config.hair] ?? hairColors.ink }} />
+          <span className="avatar__eye avatar__eye--left" />
+          <span className="avatar__eye avatar__eye--right" />
+          <span className="avatar__smile" />
+        </div>
       </div>
       {status && <span className="avatar__status">{status}</span>}
     </div>

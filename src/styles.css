@@ -54,7 +54,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(255, 91, 61,
 .auth-card input, .name-form input, .code-input-label input { width: 100%; min-height: 50px; border: 1px solid var(--line); border-radius: 14px; background: #fcfaf6; padding: 0 15px; font-size: 15px; color: var(--ink); }
 
 /* Avatar */
-.avatar { position: relative; flex: 0 0 auto; overflow: hidden; border: 3px solid rgba(255,255,255,.85); box-shadow: inset 0 -8px 16px rgba(49,45,42,.05); }
+.avatar { position: relative; flex: 0 0 auto; overflow: visible; }
+.avatar__canvas { position: absolute; inset: 0; overflow: hidden; border: 3px solid rgba(255,255,255,.85); border-radius: inherit; box-shadow: inset 0 -8px 16px rgba(49,45,42,.05); }
 .avatar--small { width: 48px; height: 48px; border-radius: 17px; }
 .avatar--medium { width: 88px; height: 88px; border-radius: 28px; }
 .avatar--large { width: 138px; height: 138px; border-radius: 42px; }
@@ -68,7 +69,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(255, 91, 61,
 .avatar__eye--left { left: 29%; }
 .avatar__eye--right { right: 29%; }
 .avatar__smile { position: absolute; width: 25%; height: 13%; border-bottom: 2px solid #9d5650; border-radius: 50%; left: 37.5%; top: 66%; }
-.avatar__status { position: absolute; right: 5%; top: 5%; display: grid; place-content: center; background: #fff; border-radius: 50%; box-shadow: 0 3px 10px rgba(44,31,26,.15); }
+.avatar__status { position: absolute; z-index: 2; right: -9%; top: -9%; display: grid; place-content: center; background: #fff; border: 2px solid #fffaf0; border-radius: 50%; box-shadow: 0 4px 12px rgba(44,31,26,.18); }
 .avatar--small .avatar__status { width: 19px; height: 19px; font-size: 10px; }
 .avatar--medium .avatar__status { width: 28px; height: 28px; font-size: 15px; }
 .avatar--large .avatar__status { width: 38px; height: 38px; font-size: 20px; }
