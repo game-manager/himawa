@@ -348,6 +348,42 @@ select, textarea { color: var(--ink); }
   .page-title p:not(.section-kicker) { max-width: 260px; }
 }
 
+/* Friend-first home: keep the status editor, reveal friends above the fold */
+@media (max-width: 899px) {
+  .home-dashboard > .greeting-row { margin: 0 2px 12px; align-items: center; }
+  .home-dashboard > .greeting-row p { margin-bottom: 0; font-size: 9px; }
+  .home-dashboard > .greeting-row h1 { font-size: 22px; line-height: 1.2; }
+  .home-dashboard > .greeting-row h1 span { font-size: 12px; }
+  .home-dashboard .add-friend-button { min-height: 36px; padding-inline: 11px; border-radius: 12px; font-size: 10px; }
+  .home-dashboard > .my-status-card { position: relative; min-height: 92px; margin-bottom: 18px; border-radius: 21px; box-shadow: 0 11px 25px rgba(255,91,61,.2); }
+  .home-dashboard .my-status-card__top { min-height: 92px; padding: 12px 52px 12px 12px; justify-content: flex-start; gap: 12px; background: radial-gradient(circle at 92% 4%, rgba(255,226,97,.32) 0 18%, transparent 18.5%); }
+  .home-dashboard .my-status-card__top > .avatar { order: -1; flex: 0 0 auto; width: 66px; height: 66px; border-radius: 20px; }
+  .home-dashboard .my-status-card .section-kicker { font-size: 7px; letter-spacing: .13em; }
+  .home-dashboard .free-status { margin-top: 3px; gap: 6px; }
+  .home-dashboard .free-status > span { display: none; }
+  .home-dashboard .free-status strong { max-width: min(49vw, 270px); overflow: hidden; font-size: 13px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+  .home-dashboard .free-status small { max-width: min(49vw, 270px); overflow: hidden; color: rgba(255,255,255,.75); text-overflow: ellipsis; white-space: nowrap; }
+  .home-dashboard .status-change-button { position: absolute; top: 50%; right: 11px; width: 34px; min-height: 34px; padding: 0; transform: translateY(-50%); justify-content: center; border: 1px solid rgba(255,255,255,.18); border-radius: 11px; background: rgba(111,31,19,.17); }
+  .home-dashboard .status-change-button > span { display: none; }
+  .home-dashboard .friends-section .section-heading { margin-bottom: 10px; align-items: center; }
+  .home-dashboard .friends-section .section-heading h2 { font-size: 22px; }
+  .home-dashboard .friends-section .section-kicker { font-size: 7px; }
+}
+
+@media (max-width: 619px) {
+  .home-dashboard .friend-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .home-dashboard .friend-card { min-height: 94px; padding: 10px 11px; display: grid; grid-template-columns: 62px minmax(0,1fr); grid-template-rows: 1fr auto; column-gap: 11px; border-radius: 18px; }
+  .home-dashboard .friend-card .avatar { grid-row: 1 / 3; width: 62px; height: 62px; margin: 0; align-self: center; aspect-ratio: auto; border-radius: 18px; }
+  .home-dashboard .friend-card__copy { min-width: 0; align-self: center; }
+  .home-dashboard .friend-card__copy h3 { margin: 0; font-size: 12px; }
+  .home-dashboard .friend-card__copy p { margin-top: 2px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+  .home-dashboard .friend-card__copy small { font-size: 8px; }
+  .home-dashboard .friend-card__actions { margin-top: 4px; gap: 6px; }
+  .home-dashboard .friend-card__actions .poke-button { min-height: 28px; font-size: 9px; }
+  .home-dashboard .friend-card__actions .circle-button { width: 30px; height: 28px; border-radius: 9px; }
+  .home-dashboard .friends-section > .social-empty { min-height: 160px; }
+}
+
 @media (min-width: 620px) {
   .note-feed { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .group-tools { grid-template-columns: 1fr 1fr; }
