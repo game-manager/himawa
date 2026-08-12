@@ -3,6 +3,18 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "auth": {
+    "providers": {
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "HIMAWA",
+        "supportEmail": "lightnozomu@gmail.com",
+        "authorizedRedirectUris": [
+          "https://game-manager.github.io"
+        ]
+      }
+    }
+  },
   "hosting": {
     "public": "dist",
     "ignore": [

@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { User } from 'firebase/auth'
-import { deleteUser, signOut } from 'firebase/auth'
+import {
+  deleteUser,
+  EmailAuthProvider,
+  GoogleAuthProvider,
+  linkWithCredential,
+  linkWithPopup,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
+  signOut,
+  updatePassword,
+  verifyBeforeUpdateEmail,
+} from 'firebase/auth'
 import {
   addDoc,
   collection,
@@ -17,6 +28,7 @@ import {
 } from 'firebase/firestore'
 import {
   Bell,
+  AtSign,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -24,6 +36,7 @@ import {
   Copy,
   Eye,
   Home,
+  KeyRound,
   LogOut,
   MessageCircle,
   Plus,
@@ -137,6 +150,160 @@ function FriendCard({ friend, onPoke, onMessage }: { friend: FriendView; onPoke:
       <div className="friend-card__copy"><h3>{friend.profile.displayName}</h3><p>{status ? `${status.emoji} ${status.text}` : 'いまは静かです'}</p><small>{getRemainingLabel(status)}</small></div>
       <div className="friend-card__actions"><button className="poke-button" onClick={onPoke} disabled={!status}><Sparkles size={14} /> Poke</button><button className="circle-button" onClick={onMessage} aria-label="DMを送る"><MessageCircle size={17} /></button></div>
     </article>
+  )
+}
+
+function accountErrorMessage(code?: string) {
+  if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') return '現在のパスワードが違います。'
+  if (code === 'auth/requires-recent-login') return '安全のため、いったんログアウトしてログインし直してから試してください。'
+  if (code === 'auth/email-already-in-use') return 'このメールアドレスは別のアカウントで使われています。'
+  if (code === 'auth/invalid-email') return 'メールアドレスを確認してください。'
+  if (code === 'auth/weak-password') return '新しいパスワードをもう少し長くしてください。'
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return 'Googleの確認画面を閉じました。'
+  if (code === 'auth/popup-blocked') return 'Googleの確認画面を開けませんでした。ポップアップを許可してください。'
+  if (code === 'auth/credential-already-in-use') return 'このGoogleアカウントは別のHIMAWAアカウントで使われています。'
+  if (code === 'auth/provider-already-linked') return 'Googleアカウントはすでに連携済みです。'
+  return '変更できませんでした。通信状態を確認して、もう一度試してください。'
+}
+
+function AccountSettings({ user, onNotice }: { user: User; onNotice: (message: string) => void }) {
+  const [newEmail, setNewEmail] = useState('')
+  const [emailPassword, setEmailPassword] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busyAction, setBusyAction] = useState<'email' | 'password' | 'google' | null>(null)
+  const [hasPassword, setHasPassword] = useState(() => user.providerData.some((item) => item.providerId === 'password'))
+  const [hasGoogle, setHasGoogle] = useState(() => user.providerData.some((item) => item.providerId === 'google.com'))
+
+  async function reauthenticate(password: string) {
+    if (hasPassword) {
+      if (!user.email || !password) throw Object.assign(new Error('Password required'), { code: 'auth/wrong-password' })
+      await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, password))
+      return
+    }
+    if (hasGoogle) {
+      const provider = new GoogleAuthProvider()
+      provider.setCustomParameters({ prompt: 'select_account' })
+      await reauthenticateWithPopup(user, provider)
+      return
+    }
+    throw new Error('No authentication provider')
+  }
+
+  function showError(reason: unknown) {
+    const code = typeof reason === 'object' && reason && 'code' in reason ? String(reason.code) : undefined
+    setError(accountErrorMessage(code))
+  }
+
+  async function changeEmail(event: FormEvent) {
+    event.preventDefault()
+    setError('')
+    const nextEmail = newEmail.trim()
+    if (!nextEmail || nextEmail === user.email) {
+      setError(nextEmail === user.email ? '現在と違うメールアドレスを入力してください。' : '新しいメールアドレスを入力してください。')
+      return
+    }
+    setBusyAction('email')
+    try {
+      await reauthenticate(emailPassword)
+      auth.languageCode = 'ja'
+      await verifyBeforeUpdateEmail(user, nextEmail)
+      setNewEmail('')
+      setEmailPassword('')
+      onNotice('新しいメールアドレスに確認メールを送りました。メール内のリンクを開くと変更されます。')
+    } catch (reason) {
+      showError(reason)
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function changePassword(event: FormEvent) {
+    event.preventDefault()
+    setError('')
+    if (newPassword.length < 8) {
+      setError('新しいパスワードは8文字以上にしてください。')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setError('新しいパスワードが一致していません。')
+      return
+    }
+    setBusyAction('password')
+    try {
+      await reauthenticate(currentPassword)
+      if (hasPassword) {
+        await updatePassword(user, newPassword)
+        onNotice('パスワードを変更しました。')
+      } else {
+        if (!user.email) throw new Error('Email is required')
+        await linkWithCredential(user, EmailAuthProvider.credential(user.email, newPassword))
+        setHasPassword(true)
+        onNotice('メールアドレスとパスワードでもログインできるようになりました。')
+      }
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (reason) {
+      showError(reason)
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function connectGoogle() {
+    setError('')
+    setBusyAction('google')
+    try {
+      const provider = new GoogleAuthProvider()
+      provider.setCustomParameters({ prompt: 'select_account' })
+      await linkWithPopup(user, provider)
+      setHasGoogle(true)
+      onNotice('Googleアカウントを連携しました。次回からGoogleでもログインできます。')
+    } catch (reason) {
+      showError(reason)
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  return (
+    <section className="account-settings-card">
+      <div className="account-settings-heading">
+        <div className="settings-icon"><AtSign size={20} /></div>
+        <div><h3>ログイン情報</h3><p>メールアドレスやパスワードを安全に変更できます。</p></div>
+      </div>
+      <div className="current-account-row">
+        <div><span>現在のメールアドレス</span><strong>{user.email ?? '未設定'}</strong></div>
+        <div className="provider-chips">
+          {hasGoogle && <span>Google</span>}
+          {hasPassword && <span>パスワード</span>}
+        </div>
+      </div>
+
+      {error && <p className="form-error account-form-error" role="alert">{error}</p>}
+
+      <form className="account-change-form" onSubmit={changeEmail}>
+        <div className="account-form-title"><AtSign size={17} /><strong>メールアドレスを変更</strong></div>
+        <label>新しいメールアドレス<input type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} autoComplete="email" placeholder="new@example.com" required /></label>
+        {hasPassword && <label>現在のパスワード<input type="password" value={emailPassword} onChange={(event) => setEmailPassword(event.target.value)} autoComplete="current-password" required /></label>}
+        <p className="account-form-note">新しいアドレスに確認メールを送ります。リンクを開くまで変更は完了しません。</p>
+        <button className="account-submit-button" type="submit" disabled={busyAction !== null}>{busyAction === 'email' ? '送信中…' : '確認メールを送る'}</button>
+      </form>
+
+      <form className="account-change-form" onSubmit={changePassword}>
+        <div className="account-form-title"><KeyRound size={17} /><strong>{hasPassword ? 'パスワードを変更' : 'パスワードを追加'}</strong></div>
+        {hasPassword && <label>現在のパスワード<input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required /></label>}
+        <label>新しいパスワード<input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" minLength={8} placeholder="8文字以上" required /></label>
+        <label>新しいパスワード（確認）<input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={8} required /></label>
+        {!hasPassword && <p className="account-form-note">Googleで本人確認したあと、メールアドレスでもログインできるようにします。</p>}
+        <button className="account-submit-button" type="submit" disabled={busyAction !== null}>{busyAction === 'password' ? '変更中…' : hasPassword ? 'パスワードを変更' : 'パスワードを追加'}</button>
+      </form>
+
+      {!hasGoogle && <div className="google-connect-row"><div><strong>Googleログイン</strong><p>連携すると、次回からGoogleでもログインできます。</p></div><button type="button" onClick={connectGoogle} disabled={busyAction !== null}><span className="google-glyph" aria-hidden="true">G</span>{busyAction === 'google' ? '連携中…' : '連携する'}</button></div>}
+    </section>
   )
 }
 
@@ -420,7 +587,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
 
         {tab === 'groups' && <section className="page-section groups-page"><div className="page-title"><div><p className="section-kicker">CIRCLES</p><h1>グループ</h1><p>友達でなくても、招待された仲間と気配を共有できます。</p></div><button className="soft-button" onClick={() => setModal('status')}><Plus size={17} /> 気配を共有</button></div><div className="group-tools"><form onSubmit={createGroup}><h2>グループを作る</h2><input value={groupName} onChange={(event) => setGroupName(event.target.value)} maxLength={20} placeholder="例：2年3組 放課後組" /><button disabled={busy || groupName.trim().length < 2}>作る</button></form><form onSubmit={joinGroup}><h2>招待コードで参加</h2><input value={groupCode} onChange={(event) => setGroupCode(event.target.value.toUpperCase())} maxLength={6} placeholder="ABC234" /><button disabled={busy || groupCode.length !== 6}>参加</button></form></div><div className="group-layout"><aside className="group-list"><h2>参加中</h2>{groups.map((group) => <button key={group.id} className={selectedGroup?.id === group.id ? 'is-active' : ''} onClick={() => setSelectedGroup(group)}><span>🌻</span><div><strong>{group.name}</strong><small>コード {group.inviteCode}</small></div><ChevronRight size={16} /></button>)}{!groups.length && <Empty emoji="👋" title="グループはまだありません" body="作るか、招待コードで参加しよう。" />}</aside><div className="group-detail">{selectedGroup ? <><header><div><h2>{selectedGroup.name}</h2><p>友達関係に関係なく、この中だけで見えます。</p></div><button onClick={() => copyCode(selectedGroup.inviteCode)}><Copy size={15} /> {selectedGroup.inviteCode}</button></header><div className="group-status-grid">{groupStatuses.length ? groupStatuses.map((status) => <article key={status.uid}><Avatar config={status.avatar} size="small" status={status.emoji} /><div><strong>{status.displayName}</strong><p>{status.emoji} {status.text}</p><small>{getRemainingLabel(status)}</small></div></article>) : <Empty emoji="🌙" title="いまは静かです" body="右上のボタンから、このグループだけに気配を共有できます。" />}</div></> : <Empty emoji="🌻" title="グループを選んでください" body="招待制の小さな居場所です。" />}</div></div></section>}
 
-        {tab === 'settings' && <section className="page-section settings-page"><p className="section-kicker">SETTINGS</p><h1>設定</h1><div className="profile-summary"><Avatar config={profile.avatar} size="medium" /><div><strong>{profile.displayName}</strong><p>{followerCount} フォロワー</p><button onClick={() => copyCode()}>{profile.friendCode} <Copy size={14} /></button></div></div>{isAdmin && <button className="admin-entry-button" onClick={() => { window.location.hash = 'admin'; window.location.reload() }}><ShieldCheck size={20} /><div><strong>管理画面を開く</strong><span>通報・ユーザー・広場を管理</span></div><ChevronRight size={18} /></button>}<h2 className="subheading">公開設定</h2><div className="privacy-settings"><label><div><strong>広場で見つけられる</strong><p>オフにするとプロフィール検索の対象外になります。</p></div><input type="checkbox" checked={profile.discoverable ?? true} onChange={(event) => updatePrivacy('discoverable', event.target.checked)} /></label><label><div><strong>気配の標準公開範囲</strong><p>気配を書くたびに変更もできます。</p></div><select value={profile.defaultStatusVisibility ?? 'friends'} onChange={(event) => updatePrivacy('defaultStatusVisibility', event.target.value)}><option value="friends">友達だけ</option><option value="followers">フォロワーまで</option><option value="public">みんなに公開</option></select></label></div><div className="safety-card"><ShieldCheck size={24} /><div><strong>安心を優先した設計</strong><p>位置情報は使いません。DMは相互の友達だけ、広場の投稿と気配は自動で消えます。</p></div></div>{friends.length > 0 && <><h2 className="subheading">友達の管理</h2><div className="settings-list">{friends.map(({ profile: friend }) => <div className="settings-friend" key={friend.uid}><Avatar config={friend.avatar} size="small" /><strong>{friend.displayName}</strong><button onClick={() => removeFriend(friend)}><UserMinus size={16} /></button><button className="danger-text" onClick={() => removeFriend(friend, true)}>ブロック</button></div>)}</div></>}<div className="settings-actions"><button onClick={() => signOut(auth)}><LogOut size={18} /> ログアウト</button><button className="danger-text" onClick={deleteAccount}>アカウントを削除</button></div></section>}
+        {tab === 'settings' && <section className="page-section settings-page"><p className="section-kicker">SETTINGS</p><h1>設定</h1><div className="profile-summary"><Avatar config={profile.avatar} size="medium" /><div><strong>{profile.displayName}</strong><p>{followerCount} フォロワー</p><button onClick={() => copyCode()}>{profile.friendCode} <Copy size={14} /></button></div></div><h2 className="subheading">アカウント</h2><AccountSettings user={user} onNotice={(message) => { setNotice(message); window.setTimeout(() => setNotice(''), 6000) }} />{isAdmin && <button className="admin-entry-button" onClick={() => { window.location.hash = 'admin'; window.location.reload() }}><ShieldCheck size={20} /><div><strong>管理画面を開く</strong><span>通報・ユーザー・広場を管理</span></div><ChevronRight size={18} /></button>}<h2 className="subheading">公開設定</h2><div className="privacy-settings"><label><div><strong>広場で見つけられる</strong><p>オフにするとプロフィール検索の対象外になります。</p></div><input type="checkbox" checked={profile.discoverable ?? true} onChange={(event) => updatePrivacy('discoverable', event.target.checked)} /></label><label><div><strong>気配の標準公開範囲</strong><p>気配を書くたびに変更もできます。</p></div><select value={profile.defaultStatusVisibility ?? 'friends'} onChange={(event) => updatePrivacy('defaultStatusVisibility', event.target.value)}><option value="friends">友達だけ</option><option value="followers">フォロワーまで</option><option value="public">みんなに公開</option></select></label></div><div className="safety-card"><ShieldCheck size={24} /><div><strong>安心を優先した設計</strong><p>位置情報は使いません。DMは相互の友達だけ、広場の投稿と気配は自動で消えます。</p></div></div>{friends.length > 0 && <><h2 className="subheading">友達の管理</h2><div className="settings-list">{friends.map(({ profile: friend }) => <div className="settings-friend" key={friend.uid}><Avatar config={friend.avatar} size="small" /><strong>{friend.displayName}</strong><button onClick={() => removeFriend(friend)}><UserMinus size={16} /></button><button className="danger-text" onClick={() => removeFriend(friend, true)}>ブロック</button></div>)}</div></>}<div className="settings-actions"><button onClick={() => signOut(auth)}><LogOut size={18} /> ログアウト</button><button className="danger-text" onClick={deleteAccount}>アカウントを削除</button></div></section>}
       </div>
 
       <nav className="bottom-nav" aria-label="メインメニュー"><button className={tab === 'home' ? 'is-active' : ''} onClick={() => setTab('home')}><Home size={21} /><span>ホーム</span></button><button className={tab === 'square' ? 'is-active' : ''} onClick={() => setTab('square')}><Compass size={21} /><span>広場</span></button><button className={tab === 'dm' ? 'is-active' : ''} onClick={() => setTab('dm')}><MessageCircle size={21} /><span>DM</span></button><button className={tab === 'groups' ? 'is-active' : ''} onClick={() => setTab('groups')}><UsersRound size={21} /><span>グループ</span></button><button className={tab === 'settings' ? 'is-active' : ''} onClick={() => setTab('settings')}><Settings size={21} /><span>設定</span></button></nav>

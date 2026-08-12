@@ -1,5 +1,10 @@
 import { useState, type FormEvent } from 'react'
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth'
+import {
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+} from 'firebase/auth'
 import { ArrowRight, LockKeyhole, MapPinOff, Sparkles } from 'lucide-react'
 import { auth } from '../lib/firebase'
 
@@ -8,6 +13,11 @@ function authErrorMessage(code?: string) {
   if (code === 'auth/invalid-credential') return 'メールアドレスかパスワードが違います。'
   if (code === 'auth/weak-password') return 'パスワードは6文字以上にしてください。'
   if (code === 'auth/invalid-email') return 'メールアドレスを確認してください。'
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return 'Googleログインをキャンセルしました。'
+  if (code === 'auth/popup-blocked') return 'Googleログインの画面を開けませんでした。ポップアップを許可してください。'
+  if (code === 'auth/unauthorized-domain') return 'このURLではGoogleログインを利用できません。管理者に連絡してください。'
+  if (code === 'auth/operation-not-allowed') return 'Googleログインは現在準備中です。少し待ってから試してください。'
+  if (code === 'auth/account-exists-with-different-credential') return '同じメールアドレスのアカウントがあります。先にメールアドレスでログインしてください。'
   return 'うまく接続できませんでした。少し待って、もう一度試してください。'
 }
 
@@ -28,6 +38,21 @@ export function AuthScreen() {
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password)
       }
+    } catch (reason) {
+      const code = typeof reason === 'object' && reason && 'code' in reason ? String(reason.code) : undefined
+      setError(authErrorMessage(code))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function signInWithGoogle() {
+    setError('')
+    setLoading(true)
+    try {
+      const provider = new GoogleAuthProvider()
+      provider.setCustomParameters({ prompt: 'select_account' })
+      await signInWithPopup(auth, provider)
     } catch (reason) {
       const code = typeof reason === 'object' && reason && 'code' in reason ? String(reason.code) : undefined
       setError(authErrorMessage(code))
@@ -70,6 +95,11 @@ export function AuthScreen() {
             {!loading && <ArrowRight size={18} />}
           </button>
         </form>
+        <div className="auth-divider"><span>または</span></div>
+        <button className="google-auth-button" type="button" onClick={signInWithGoogle} disabled={loading}>
+          <span className="google-glyph" aria-hidden="true">G</span>
+          Googleで{mode === 'signup' ? 'はじめる' : 'ログイン'}
+        </button>
         <p className="fine-print">13歳以上向け。登録すると利用ルールとプライバシー方針に同意したものとみなされます。</p>
       </section>
     </main>
