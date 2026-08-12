@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing'
-import { collection, doc, getDoc, getDocs, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
 
 const projectId = 'himawa-rules-test'
 let testEnv: RulesTestEnvironment
@@ -150,5 +150,38 @@ describe('HIMAWA Firestore rules', () => {
 
     await assertSucceeds(getDocs(collection(testEnv.authenticatedContext('bob').firestore(), 'groups', 'classroom', 'statuses')))
     await assertFails(getDocs(collection(testEnv.authenticatedContext('mallory').firestore(), 'groups', 'classroom', 'statuses')))
+  })
+
+  it('allows only registered admins to moderate content and users', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const admin = context.firestore()
+      await setDoc(doc(admin, 'admins', 'alice'), { uid: 'alice', createdAt: new Date() })
+      await setDoc(doc(admin, 'users', 'alice'), profile('alice', 'ALICE2'))
+      await setDoc(doc(admin, 'users', 'bob'), profile('bob', 'BOB222'))
+      await setDoc(doc(admin, 'publicProfiles', 'bob'), { uid: 'bob', displayName: 'ぼぶ', avatar, discoverable: false })
+      await setDoc(doc(admin, 'notes', 'note-1'), { authorUid: 'bob', authorName: 'ぼぶ', authorAvatar: avatar, text: 'テスト投稿', expiresAt: Date.now() + 60_000, createdAt: new Date() })
+      await setDoc(doc(admin, 'reports', 'report-1'), { reporterUid: 'mallory', targetUid: 'bob', reason: '迷惑行為', createdAt: new Date() })
+    })
+
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    const mallory = testEnv.authenticatedContext('mallory').firestore()
+    await assertSucceeds(getDocs(collection(alice, 'publicProfiles')))
+    await assertFails(getDocs(collection(mallory, 'publicProfiles')))
+    await assertSucceeds(deleteDoc(doc(alice, 'notes', 'note-1')))
+    await assertSucceeds(updateDoc(doc(alice, 'reports', 'report-1'), { status: 'resolved', reviewedAt: serverTimestamp(), reviewedBy: 'alice' }))
+    await assertSucceeds(setDoc(doc(alice, 'moderation', 'bob'), { status: 'suspended', reason: '安全確認', updatedAt: serverTimestamp(), updatedBy: 'alice' }))
+    await assertFails(setDoc(doc(mallory, 'moderation', 'bob'), { status: 'suspended', reason: '不正操作', updatedAt: serverTimestamp(), updatedBy: 'mallory' }))
+  })
+
+  it('blocks suspended users from normal app data', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const admin = context.firestore()
+      await setDoc(doc(admin, 'users', 'bob'), profile('bob', 'BOB222'))
+      await setDoc(doc(admin, 'moderation', 'bob'), { status: 'suspended', reason: '安全確認', updatedBy: 'alice' })
+    })
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    await assertSucceeds(getDoc(doc(bob, 'moderation', 'bob')))
+    await assertFails(getDoc(doc(bob, 'users', 'bob')))
+    await assertFails(setDoc(doc(bob, 'notes', 'blocked-note'), { authorUid: 'bob', authorName: 'ぼぶ', authorAvatar: avatar, text: '投稿できない', expiresAt: Date.now() + 60_000, createdAt: new Date() }))
   })
 })

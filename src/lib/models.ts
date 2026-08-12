@@ -113,3 +113,31 @@ export type GroupStatus = CurrentStatus & {
   displayName: string
   avatar: AvatarConfig
 }
+
+export type ModerationState = {
+  status: 'active' | 'suspended'
+  reason?: string
+  updatedAt?: unknown
+  updatedBy?: string
+}
+
+export type Report = {
+  id: string
+  reporterUid: string
+  targetUid: string
+  reason: string
+  status?: 'pending' | 'resolved' | 'dismissed'
+  createdAt?: { toMillis?: () => number }
+  reviewedAt?: unknown
+  reviewedBy?: string
+}
+
+export type ModerationAction = {
+  id: string
+  action: 'suspend_user' | 'restore_user' | 'delete_note' | 'resolve_report' | 'dismiss_report'
+  actorUid: string
+  targetUid?: string
+  targetId?: string
+  detail?: string
+  createdAt?: { toMillis?: () => number }
+}

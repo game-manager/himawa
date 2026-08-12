@@ -2,7 +2,16 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
+    function authenticated() { return request.auth != null; }
+    function isSuspended(uid) {
+      return authenticated()
+        && exists(/databases/$(database)/documents/moderation/$(uid))
+        && get(/databases/$(database)/documents/moderation/$(uid)).data.status == 'suspended';
+    }
+    function signedIn() { return authenticated() && !isSuspended(request.auth.uid); }
+    function isAdmin() {
+      return authenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
     function isFriend(uid) {
       return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(uid));
@@ -50,8 +59,8 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow get: if isOwner(uid) || (isFriend(uid) && !isBlocked(uid));
-      allow list: if false;
+      allow get: if isAdmin() || isOwner(uid) || (isFriend(uid) && !isBlocked(uid));
+      allow list: if isAdmin();
       allow create: if isOwner(uid) && validProfile(uid);
       allow update: if isOwner(uid)
         && request.resource.data.uid == resource.data.uid
@@ -94,8 +103,8 @@ service cloud.firestore {
     }
 
     match /publicProfiles/{uid} {
-      allow get: if signedIn() && (resource.data.discoverable == true || isOwner(uid) || isFriend(uid) || follows(uid));
-      allow list: if false;
+      allow get: if isAdmin() || (signedIn() && (resource.data.discoverable == true || isOwner(uid) || isFriend(uid) || follows(uid)));
+      allow list: if isAdmin();
       allow create, update: if isOwner(uid)
         && request.resource.data.uid == uid
         && request.resource.data.displayName is string
@@ -163,7 +172,7 @@ service cloud.firestore {
     }
 
     match /notes/{noteId} {
-      allow read: if signedIn();
+      allow read: if signedIn() || isAdmin();
       allow create: if signedIn()
         && request.resource.data.authorUid == request.auth.uid
         && request.resource.data.text is string
@@ -171,7 +180,7 @@ service cloud.firestore {
         && request.resource.data.text.size() <= 160
         && request.resource.data.expiresAt is number;
       allow update: if false;
-      allow delete: if signedIn() && resource.data.authorUid == request.auth.uid;
+      allow delete: if isAdmin() || (signedIn() && resource.data.authorUid == request.auth.uid);
     }
 
     match /conversations/{conversationId} {
@@ -213,8 +222,8 @@ service cloud.firestore {
     }
 
     match /groups/{groupId} {
-      allow get: if isGroupMember(groupId);
-      allow list: if false;
+      allow get: if isAdmin() || isGroupMember(groupId);
+      allow list: if isAdmin();
       allow create: if signedIn()
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.name is string
@@ -249,7 +258,36 @@ service cloud.firestore {
 
     match /reports/{reportId} {
       allow create: if signedIn() && request.resource.data.reporterUid == request.auth.uid && request.resource.data.targetUid != request.auth.uid;
-      allow read, update, delete: if false;
+      allow read: if isAdmin();
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy'])
+        && request.resource.data.status in ['resolved', 'dismissed']
+        && request.resource.data.reviewedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /admins/{uid} {
+      allow get: if authenticated() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /moderation/{uid} {
+      allow get: if authenticated() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isAdmin()
+        && !exists(/databases/$(database)/documents/admins/$(uid))
+        && request.resource.data.status in ['active', 'suspended']
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /moderationActions/{actionId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.action in ['suspend_user', 'restore_user', 'delete_note', 'resolve_report', 'dismiss_report'];
+      allow update, delete: if false;
     }
 
     match /{document=**} { allow read, write: if false; }
