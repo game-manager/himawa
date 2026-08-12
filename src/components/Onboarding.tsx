@@ -90,37 +90,39 @@ export function Onboarding({ user }: { user: User }) {
           </button>
         </div>
 
-        <div className="avatar-options">
-          {avatarChoices.map((choice) => (
-            <div className="avatar-option-row" key={choice.key}>
-              <span>{choice.label}</span>
-              <div>
-                {choice.values.map((value) => (
-                  <button
-                    type="button"
-                    key={value}
-                    className={`swatch swatch--${choice.key}-${value} ${avatar[choice.key] === value ? 'is-selected' : ''}`}
-                    onClick={() => setAvatar((current) => ({ ...current, [choice.key]: value }))}
-                    aria-label={`${choice.label}を${value}にする`}
-                  >
-                    {avatar[choice.key] === value && <Check size={14} />}
-                  </button>
-                ))}
+        <div className="onboarding-customizer">
+          <div className="avatar-options">
+            {avatarChoices.map((choice) => (
+              <div className="avatar-option-row" key={choice.key}>
+                <span>{choice.label}</span>
+                <div>
+                  {choice.values.map((value) => (
+                    <button
+                      type="button"
+                      key={value}
+                      className={`swatch swatch--${choice.key}-${value} ${avatar[choice.key] === value ? 'is-selected' : ''}`}
+                      onClick={() => setAvatar((current) => ({ ...current, [choice.key]: value }))}
+                      aria-label={`${choice.label}を${value}にする`}
+                    >
+                      {avatar[choice.key] === value && <Check size={14} />}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        <form onSubmit={save} className="name-form">
-          <label>
-            友達に見せる名前
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="例：はる" maxLength={12} autoFocus required />
-          </label>
-          {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="primary-button" type="submit" disabled={saving}>
-            {saving ? '保存中…' : 'これでスタート'} {!saving && <ArrowRight size={18} />}
-          </button>
-        </form>
+          <form onSubmit={save} className="name-form">
+            <label>
+              友達に見せる名前
+              <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="例：はる" maxLength={12} autoFocus required />
+            </label>
+            {error && <p className="form-error" role="alert">{error}</p>}
+            <button className="primary-button" type="submit" disabled={saving}>
+              {saving ? '保存中…' : 'これでスタート'} {!saving && <ArrowRight size={18} />}
+            </button>
+          </form>
+        </div>
       </section>
     </main>
   )

@@ -279,7 +279,7 @@ export function Dashboard({ user, profile }: { user: User; profile: UserProfile 
 
       <div className="app-content">
         {tab === 'home' && (
-          <>
+          <div className="home-dashboard">
             <section className="greeting-row">
               <div><p>{new Date().getHours() < 17 ? 'おつかれさま' : 'こんばんは'}、</p><h1>{profile.displayName}<span>さん</span></h1></div>
               <button className="add-friend-button" onClick={() => setModal('invite')}><Plus size={18} /> 友達</button>
@@ -306,7 +306,7 @@ export function Dashboard({ user, profile }: { user: User; profile: UserProfile 
                 </div>
               )}
             </section>
-          </>
+          </div>
         )}
 
         {tab === 'inbox' && (
