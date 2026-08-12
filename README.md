@@ -4,7 +4,9 @@
 
 > Status: MVP development
 
-**Beta:** https://himawa-social-2026.web.app
+**Beta:** https://game-manager.github.io/himawa/
+
+Firebase Hosting版：https://himawa-social-2026.web.app
 
 ## コンセプト
 
