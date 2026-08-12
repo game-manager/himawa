@@ -53,9 +53,20 @@ export function Onboarding({ user }: { user: User }) {
               friendCode,
               avatar,
               currentStatus: null,
+              defaultStatusVisibility: 'friends',
+              discoverable: true,
+              bio: '',
               createdAt: serverTimestamp(),
             })
             transaction.set(codeRef, { uid: user.uid, displayName: name, friendCode })
+            transaction.set(doc(db, 'publicProfiles', user.uid), {
+              uid: user.uid,
+              displayName: name,
+              avatar,
+              bio: '',
+              discoverable: true,
+              updatedAt: serverTimestamp(),
+            })
           })
           created = true
         } catch (reason) {
@@ -84,7 +95,7 @@ export function Onboarding({ user }: { user: User }) {
         <p className="eyebrow">きみの分身をつくろう</p>
         <h1>どんな姿で<br />友達に会う？</h1>
         <div className="avatar-preview">
-          <Avatar config={avatar} size="large" status="available" />
+          <Avatar config={avatar} size="large" status="🌻" />
           <button className="shuffle-button" type="button" onClick={() => setAvatar(randomAvatar())} aria-label="アバターをランダムに変更">
             <Shuffle size={18} />
           </button>

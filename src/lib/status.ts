@@ -1,36 +1,51 @@
-import type { CurrentStatus, PokeKind, StatusKind } from './models'
+import type { CurrentStatus, LegacyStatusKind, PokeKind, StatusVisibility } from './models'
 
-export const STATUS_OPTIONS: Array<{
-  kind: StatusKind
-  label: string
-  shortLabel: string
-  emoji: string
-  durationMinutes: number
-  color: string
-}> = [
-  { kind: 'available', label: 'いま遊べる', shortLabel: '遊べる', emoji: '👋', durationMinutes: 60, color: '#4ecb8d' },
-  { kind: 'gaming', label: 'ゲーム中', shortLabel: 'ゲーム中', emoji: '🎮', durationMinutes: 120, color: '#816cff' },
-  { kind: 'studying', label: '勉強中', shortLabel: '勉強中', emoji: '📚', durationMinutes: 60, color: '#4d96ff' },
-  { kind: 'moving', label: '移動中', shortLabel: '移動中', emoji: '🚶', durationMinutes: 30, color: '#ff9f43' },
-  { kind: 'later', label: 'あとでならOK', shortLabel: 'あとでOK', emoji: '🕒', durationMinutes: 180, color: '#e76f9b' },
-  { kind: 'resting', label: '今日はゆっくり', shortLabel: 'ゆっくり', emoji: '🌙', durationMinutes: 240, color: '#5f6f94' },
-  { kind: 'hidden', label: '気配を消す', shortLabel: 'オフ', emoji: '☁️', durationMinutes: 60, color: '#a8a8a8' },
+const LEGACY_STATUS: Record<LegacyStatusKind, { text: string; emoji: string }> = {
+  available: { text: 'いま遊べる', emoji: '🌱' },
+  gaming: { text: 'ゲーム中', emoji: '🎮' },
+  studying: { text: '勉強中', emoji: '📚' },
+  moving: { text: '移動中', emoji: '🚲' },
+  later: { text: 'あとでならOK', emoji: '🌙' },
+  resting: { text: '今日はゆっくり', emoji: '☕' },
+  hidden: { text: '気配はオフ', emoji: '○' },
+}
+
+export const STATUS_EMOJIS = ['🌻', '🌱', '🎮', '📚', '🎧', '☕', '🚲', '💬', '🌙', '✨']
+
+export const STATUS_DURATIONS = [
+  { minutes: 30, label: '30分' },
+  { minutes: 60, label: '1時間' },
+  { minutes: 120, label: '2時間' },
+  { minutes: 240, label: '4時間' },
 ]
+
+export const VISIBILITY_LABELS: Record<StatusVisibility, { label: string; description: string }> = {
+  friends: { label: '友達だけ', description: 'お互いに友達の人へ表示' },
+  followers: { label: 'フォロワーまで', description: 'あなたをフォローしている人へ表示' },
+  public: { label: 'みんなに公開', description: 'HIMAWAを使っている人へ表示' },
+  groups: { label: 'グループだけ', description: '選んだグループのメンバーへ表示' },
+}
 
 export const POKE_OPTIONS: Array<{ kind: PokeKind; label: string; emoji: string }> = [
-  { kind: 'play', label: '遊ぼ', emoji: '👋' },
+  { kind: 'play', label: '遊ぼう', emoji: '🌱' },
   { kind: 'game', label: 'ゲームしよ', emoji: '🎮' },
-  { kind: 'talk', label: 'あとで話そ', emoji: '💬' },
-  { kind: 'cheer', label: 'がんばれ', emoji: '🔥' },
+  { kind: 'talk', label: 'あとで話そう', emoji: '💬' },
+  { kind: 'cheer', label: 'がんばれ', emoji: '🌻' },
 ]
 
-export function getStatusDefinition(status: CurrentStatus | null, now = Date.now()) {
+export function normalizeStatus(status: CurrentStatus | null, now = Date.now()) {
   if (!status || status.expiresAt <= now) return null
-  return STATUS_OPTIONS.find((item) => item.kind === status.kind) ?? null
+  const legacy = status.kind ? LEGACY_STATUS[status.kind] : null
+  return {
+    ...status,
+    text: status.text || legacy?.text || 'いまを共有中',
+    emoji: status.emoji || legacy?.emoji || '🌻',
+    visibility: status.visibility || 'friends',
+  }
 }
 
 export function getRemainingLabel(status: CurrentStatus | null, now = Date.now()) {
-  if (!status || status.expiresAt <= now) return '未設定'
+  if (!status || status.expiresAt <= now) return 'まだ設定していません'
   const minutes = Math.max(1, Math.ceil((status.expiresAt - now) / 60_000))
   if (minutes < 60) return `あと${minutes}分`
   const hours = Math.floor(minutes / 60)
@@ -38,14 +53,8 @@ export function getRemainingLabel(status: CurrentStatus | null, now = Date.now()
   return rest ? `あと${hours}時間${rest}分` : `あと${hours}時間`
 }
 
-export function createStatus(kind: StatusKind, now = Date.now()): CurrentStatus {
-  const definition = STATUS_OPTIONS.find((item) => item.kind === kind)
-  if (!definition) throw new Error('Unknown status kind')
-  return {
-    kind,
-    updatedAt: now,
-    expiresAt: now + definition.durationMinutes * 60_000,
-  }
+export function createStatus(text: string, emoji: string, visibility: StatusVisibility, durationMinutes: number, groupIds: string[] = [], now = Date.now()): CurrentStatus {
+  return { text: text.trim(), emoji, visibility, groupIds, updatedAt: now, expiresAt: now + durationMinutes * 60_000 }
 }
 
 export function pokeLabel(kind: PokeKind) {

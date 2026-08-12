@@ -2,38 +2,36 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(uid) {
-      return signedIn() && request.auth.uid == uid;
-    }
-
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
     function isFriend(uid) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(uid));
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(uid));
     }
-
+    function follows(uid) {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(uid)/followers/$(request.auth.uid));
+    }
     function isBlocked(uid) {
       return signedIn() && (
         exists(/databases/$(database)/documents/users/$(request.auth.uid)/blocks/$(uid))
         || exists(/databases/$(database)/documents/users/$(uid)/blocks/$(request.auth.uid))
       );
     }
-
+    function isGroupMember(groupId) {
+      return signedIn() && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+    }
+    function conversationOther(data) {
+      return data.participants[0] == request.auth.uid ? data.participants[1] : data.participants[0];
+    }
     function validAvatar(avatar) {
       return avatar is map
         && avatar.keys().hasOnly(['skin', 'hair', 'outfit', 'background'])
-        && avatar.skin is string
-        && avatar.hair is string
-        && avatar.outfit is string
-        && avatar.background is string;
+        && avatar.skin is string && avatar.hair is string
+        && avatar.outfit is string && avatar.background is string;
     }
-
     function validProfile(uid) {
       return request.resource.data.keys().hasOnly([
-          'uid', 'displayName', 'friendCode', 'avatar', 'currentStatus', 'createdAt'
+          'uid', 'displayName', 'friendCode', 'avatar', 'currentStatus', 'defaultStatusVisibility',
+          'discoverable', 'bio', 'createdAt'
         ])
         && request.resource.data.uid == uid
         && request.resource.data.displayName is string
@@ -42,6 +40,13 @@ service cloud.firestore {
         && request.resource.data.friendCode is string
         && request.resource.data.friendCode.size() == 6
         && validAvatar(request.resource.data.avatar);
+    }
+    function validAcceptedRequest(requestId, uid, friendUid) {
+      let friendRequest = getAfter(/databases/$(database)/documents/friendRequests/$(requestId)).data;
+      return friendRequest.status == 'accepted' && (
+        (friendRequest.fromUid == uid && friendRequest.toUid == friendUid)
+        || (friendRequest.fromUid == friendUid && friendRequest.toUid == uid)
+      );
     }
 
     match /users/{uid} {
@@ -65,26 +70,65 @@ service cloud.firestore {
         allow delete: if signedIn() && (request.auth.uid == uid || request.auth.uid == friendUid);
       }
 
-      match /blocks/{blockedUid} {
-        allow read, create, update, delete: if isOwner(uid);
+      match /blocks/{blockedUid} { allow read, create, update, delete: if isOwner(uid); }
+
+      match /following/{targetUid} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && request.resource.data.uid == targetUid;
+        allow delete: if isOwner(uid);
+      }
+
+      match /followers/{followerUid} {
+        allow read: if isOwner(uid);
+        allow create, update: if signedIn() && request.auth.uid == followerUid && request.resource.data.uid == followerUid;
+        allow delete: if signedIn() && (request.auth.uid == followerUid || request.auth.uid == uid);
+      }
+
+      match /groups/{groupId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && request.resource.data.groupId == groupId
+          && existsAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(uid));
+        allow delete: if isOwner(uid);
       }
     }
 
-    function validAcceptedRequest(requestId, uid, friendUid) {
-      let friendRequest = getAfter(/databases/$(database)/documents/friendRequests/$(requestId)).data;
-      return friendRequest.status == 'accepted'
-        && (
-          (friendRequest.fromUid == uid && friendRequest.toUid == friendUid)
-          || (friendRequest.fromUid == friendUid && friendRequest.toUid == uid)
-        );
+    match /publicProfiles/{uid} {
+      allow get: if signedIn() && (resource.data.discoverable == true || isOwner(uid) || isFriend(uid) || follows(uid));
+      allow list: if false;
+      allow create, update: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2
+        && request.resource.data.displayName.size() <= 12
+        && validAvatar(request.resource.data.avatar)
+        && request.resource.data.discoverable is bool;
+      allow delete: if isOwner(uid);
+    }
+
+    match /statusShares/{uid} {
+      allow get: if signedIn() && !isBlocked(uid) && (
+        isOwner(uid)
+        || resource.data.visibility == 'public'
+        || (resource.data.visibility == 'friends' && isFriend(uid))
+        || (resource.data.visibility == 'followers' && follows(uid))
+      );
+      allow list: if false;
+      allow create, update: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 1
+        && request.resource.data.text.size() <= 60
+        && request.resource.data.emoji is string
+        && request.resource.data.visibility in ['friends', 'followers', 'public']
+        && request.resource.data.expiresAt is number;
+      allow delete: if isOwner(uid);
     }
 
     match /codes/{code} {
       allow get: if signedIn();
       allow list: if false;
-      allow create: if signedIn()
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.friendCode == code;
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.friendCode == code;
       allow update: if false;
       allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
@@ -96,15 +140,13 @@ service cloud.firestore {
         && request.resource.data.toUid != request.auth.uid
         && request.resource.data.status == 'pending'
         && exists(/databases/$(database)/documents/users/$(request.resource.data.toUid));
-      allow read: if signedIn()
-        && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow read: if signedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
       allow update: if signedIn()
         && resource.data.toUid == request.auth.uid
         && resource.data.status == 'pending'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedAt'])
         && request.resource.data.status in ['accepted', 'declined'];
-      allow delete: if signedIn()
-        && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow delete: if signedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
     }
 
     match /pokes/{pokeId} {
@@ -112,26 +154,104 @@ service cloud.firestore {
         && request.resource.data.fromUid == request.auth.uid
         && request.resource.data.toUid is string
         && request.resource.data.kind in ['play', 'game', 'talk', 'cheer']
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(request.resource.data.toUid))
+        && isFriend(request.resource.data.toUid)
         && !isBlocked(request.resource.data.toUid);
-      allow read: if signedIn()
-        && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
-      allow update: if signedIn()
-        && resource.data.toUid == request.auth.uid
+      allow read: if signedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow update: if signedIn() && resource.data.toUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
-      allow delete: if signedIn()
-        && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow delete: if signedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+    }
+
+    match /notes/{noteId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 1
+        && request.resource.data.text.size() <= 160
+        && request.resource.data.expiresAt is number;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.authorUid == request.auth.uid;
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if signedIn()
+        && request.auth.uid in resource.data.participants
+        && isFriend(conversationOther(resource.data));
+      allow create: if signedIn()
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
+        && request.auth.uid in request.resource.data.participants
+        && isFriend(conversationOther(request.resource.data));
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.participants == resource.data.participants
+        && isFriend(conversationOther(resource.data));
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if signedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+          && isFriend(conversationOther(get(/databases/$(database)/documents/conversations/$(conversationId)).data));
+        allow create: if signedIn()
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() >= 1
+          && request.resource.data.text.size() <= 500
+          && request.auth.uid in getAfter(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+          && isFriend(conversationOther(getAfter(/databases/$(database)/documents/conversations/$(conversationId)).data));
+        allow update, delete: if false;
+      }
+    }
+
+    match /groupCodes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /groups/{groupId} {
+      allow get: if isGroupMember(groupId);
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 20
+        && request.resource.data.inviteCode is string
+        && request.resource.data.inviteCode.size() == 6;
+      allow update: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+
+      match /members/{memberUid} {
+        allow read: if isGroupMember(groupId);
+        allow create, update: if signedIn()
+          && memberUid == request.auth.uid
+          && request.resource.data.uid == request.auth.uid
+          && existsAfter(/databases/$(database)/documents/groups/$(groupId));
+        allow delete: if signedIn() && (memberUid == request.auth.uid || get(/databases/$(database)/documents/groups/$(groupId)).data.ownerUid == request.auth.uid);
+      }
+
+      match /statuses/{statusUid} {
+        allow read: if isGroupMember(groupId);
+        allow create, update: if isGroupMember(groupId)
+          && statusUid == request.auth.uid
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() >= 1
+          && request.resource.data.text.size() <= 60
+          && request.resource.data.expiresAt is number;
+        allow delete: if isGroupMember(groupId) && statusUid == request.auth.uid;
+      }
     }
 
     match /reports/{reportId} {
-      allow create: if signedIn()
-        && request.resource.data.reporterUid == request.auth.uid
-        && request.resource.data.targetUid != request.auth.uid;
+      allow create: if signedIn() && request.resource.data.reporterUid == request.auth.uid && request.resource.data.targetUid != request.auth.uid;
       allow read, update, delete: if false;
     }
 
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    match /{document=**} { allow read, write: if false; }
   }
 }

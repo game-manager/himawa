@@ -85,4 +85,70 @@ describe('HIMAWA Firestore rules', () => {
     await assertSucceeds(setDoc(doc(alice, 'users', 'alice', 'blocks', 'bob'), { uid: 'bob', createdAt: serverTimestamp() }))
     await assertFails(getDoc(doc(bob, 'users', 'alice')))
   })
+
+  it('enforces status visibility for friends, followers, and public viewers', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const admin = context.firestore()
+      await setDoc(doc(admin, 'users', 'alice'), profile('alice', 'ALICE2'))
+      await setDoc(doc(admin, 'users', 'bob'), profile('bob', 'BOB222'))
+      await setDoc(doc(admin, 'users', 'alice', 'friends', 'bob'), { uid: 'bob', requestId: 'request-1' })
+      await setDoc(doc(admin, 'users', 'bob', 'friends', 'alice'), { uid: 'alice', requestId: 'request-1' })
+      await setDoc(doc(admin, 'statusShares', 'alice'), {
+        uid: 'alice', displayName: 'ありす', avatar, text: '放課後あそべる', emoji: '🌻',
+        visibility: 'friends', expiresAt: Date.now() + 60_000, updatedAt: Date.now(),
+      })
+    })
+
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    const mallory = testEnv.authenticatedContext('mallory').firestore()
+    await assertSucceeds(getDoc(doc(bob, 'statusShares', 'alice')))
+    await assertFails(getDoc(doc(mallory, 'statusShares', 'alice')))
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const admin = context.firestore()
+      await setDoc(doc(admin, 'users', 'alice', 'followers', 'mallory'), { uid: 'mallory' })
+      await setDoc(doc(admin, 'statusShares', 'alice'), {
+        uid: 'alice', displayName: 'ありす', avatar, text: 'みんなで話そう', emoji: '💬',
+        visibility: 'followers', expiresAt: Date.now() + 60_000, updatedAt: Date.now(),
+      })
+    })
+    await assertSucceeds(getDoc(doc(mallory, 'statusShares', 'alice')))
+  })
+
+  it('allows DMs only while both users are friends', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const admin = context.firestore()
+      await setDoc(doc(admin, 'users', 'alice'), profile('alice', 'ALICE2'))
+      await setDoc(doc(admin, 'users', 'bob'), profile('bob', 'BOB222'))
+      await setDoc(doc(admin, 'users', 'alice', 'friends', 'bob'), { uid: 'bob', requestId: 'request-1' })
+      await setDoc(doc(admin, 'users', 'bob', 'friends', 'alice'), { uid: 'alice', requestId: 'request-1' })
+      await setDoc(doc(admin, 'conversations', 'alice_bob'), {
+        participants: ['alice', 'bob'], participantNames: { alice: 'ありす', bob: 'ぼぶ' },
+        participantAvatars: { alice: avatar, bob: avatar }, lastMessage: '', updatedAt: new Date(),
+      })
+    })
+
+    const bob = testEnv.authenticatedContext('bob').firestore()
+    const mallory = testEnv.authenticatedContext('mallory').firestore()
+    await assertSucceeds(getDoc(doc(bob, 'conversations', 'alice_bob')))
+    await assertFails(getDoc(doc(mallory, 'conversations', 'alice_bob')))
+    await assertSucceeds(setDoc(doc(bob, 'conversations', 'alice_bob', 'messages', 'm1'), { senderUid: 'bob', text: 'こんにちは', createdAt: new Date() }))
+    await assertFails(setDoc(doc(mallory, 'conversations', 'alice_bob', 'messages', 'm2'), { senderUid: 'mallory', text: '読めない', createdAt: new Date() }))
+  })
+
+  it('keeps group statuses inside invite-only groups', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const admin = context.firestore()
+      await setDoc(doc(admin, 'groups', 'classroom'), { name: '放課後組', ownerUid: 'alice', inviteCode: 'SUN222', createdAt: new Date() })
+      await setDoc(doc(admin, 'groups', 'classroom', 'members', 'alice'), { uid: 'alice' })
+      await setDoc(doc(admin, 'groups', 'classroom', 'members', 'bob'), { uid: 'bob' })
+      await setDoc(doc(admin, 'groups', 'classroom', 'statuses', 'alice'), {
+        uid: 'alice', displayName: 'ありす', avatar, text: '集合できる人？', emoji: '🌻',
+        visibility: 'groups', expiresAt: Date.now() + 60_000, updatedAt: Date.now(), groupIds: ['classroom'],
+      })
+    })
+
+    await assertSucceeds(getDocs(collection(testEnv.authenticatedContext('bob').firestore(), 'groups', 'classroom', 'statuses')))
+    await assertFails(getDocs(collection(testEnv.authenticatedContext('mallory').firestore(), 'groups', 'classroom', 'statuses')))
+  })
 })
