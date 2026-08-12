@@ -171,6 +171,10 @@ describe('HIMAWA Firestore rules', () => {
     await assertSucceeds(updateDoc(doc(alice, 'reports', 'report-1'), { status: 'resolved', reviewedAt: serverTimestamp(), reviewedBy: 'alice' }))
     await assertSucceeds(setDoc(doc(alice, 'moderation', 'bob'), { status: 'suspended', reason: '安全確認', updatedAt: serverTimestamp(), updatedBy: 'alice' }))
     await assertFails(setDoc(doc(mallory, 'moderation', 'bob'), { status: 'suspended', reason: '不正操作', updatedAt: serverTimestamp(), updatedBy: 'mallory' }))
+    await assertSucceeds(setDoc(doc(alice, 'admins', 'bob'), { uid: 'bob', displayName: 'ぼぶ', createdAt: serverTimestamp(), createdBy: 'alice' }))
+    await assertFails(setDoc(doc(mallory, 'admins', 'mallory'), { uid: 'mallory', displayName: 'まりー', createdAt: serverTimestamp(), createdBy: 'mallory' }))
+    await assertSucceeds(deleteDoc(doc(alice, 'admins', 'bob')))
+    await assertFails(deleteDoc(doc(alice, 'admins', 'alice')))
   })
 
   it('blocks suspended users from normal app data', async () => {

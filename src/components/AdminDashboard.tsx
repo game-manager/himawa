@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import type { User } from 'firebase/auth'
 import { signOut } from 'firebase/auth'
 import { collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
-import { ArrowLeft, Ban, CheckCircle2, FileWarning, LayoutDashboard, LogOut, MessageSquareText, Search, ShieldCheck, Users, UsersRound } from 'lucide-react'
+import { ArrowLeft, Ban, CheckCircle2, FileWarning, KeyRound, LayoutDashboard, LogOut, MessageSquareText, Search, ShieldCheck, UserPlus, Users, UsersRound } from 'lucide-react'
 import { auth, db } from '../lib/firebase'
 import type { Group, ModerationAction, ModerationState, Note, PublicProfile, Report, UserProfile } from '../lib/models'
 import { Avatar } from './Avatar'
 
-type AdminTab = 'overview' | 'users' | 'reports' | 'notes' | 'groups' | 'audit'
+type AdminTab = 'overview' | 'users' | 'admins' | 'reports' | 'notes' | 'groups' | 'audit'
+type AdminRecord = { uid: string; displayName?: string; email?: string; createdAt?: { toMillis?: () => number }; createdBy?: string }
 
 function timeOf(value?: { toMillis?: () => number }) { return value?.toMillis?.() ?? 0 }
 function dateLabel(value?: { toMillis?: () => number }) {
@@ -23,6 +24,7 @@ export function AdminDashboard({ user, profile }: { user: User; profile: UserPro
   const [groups, setGroups] = useState<Group[]>([])
   const [moderation, setModeration] = useState<Record<string, ModerationState>>({})
   const [actions, setActions] = useState<ModerationAction[]>([])
+  const [admins, setAdmins] = useState<AdminRecord[]>([])
   const [search, setSearch] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -32,6 +34,7 @@ export function AdminDashboard({ user, profile }: { user: User; profile: UserPro
   useEffect(() => onSnapshot(collection(db, 'groups'), (snapshot) => setGroups(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Group))), [])
   useEffect(() => onSnapshot(collection(db, 'moderation'), (snapshot) => setModeration(Object.fromEntries(snapshot.docs.map((item) => [item.id, item.data() as ModerationState])))), [])
   useEffect(() => onSnapshot(collection(db, 'moderationActions'), (snapshot) => setActions(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as ModerationAction).sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt)).slice(0, 100))), [])
+  useEffect(() => onSnapshot(collection(db, 'admins'), (snapshot) => setAdmins(snapshot.docs.map((item) => ({ uid: item.id, ...item.data() }) as AdminRecord).sort((a, b) => (a.displayName ?? '').localeCompare(b.displayName ?? '', 'ja')))), [])
 
   const pendingReports = reports.filter((item) => !item.status || item.status === 'pending')
   const filteredProfiles = useMemo(() => {
@@ -67,9 +70,24 @@ export function AdminDashboard({ user, profile }: { user: User; profile: UserPro
     setNotice(status === 'resolved' ? '対応済みにしました' : '問題なしとして閉じました')
   }
 
+  async function addAdmin(target: PublicProfile) {
+    if (admins.some((item) => item.uid === target.uid)) return
+    if (!window.confirm(`${target.displayName}さんを管理者にしますか？\n管理画面の閲覧と運営操作が可能になります。`)) return
+    await setDoc(doc(db, 'admins', target.uid), { uid: target.uid, displayName: target.displayName, createdAt: serverTimestamp(), createdBy: user.uid })
+    setNotice(`${target.displayName}さんを管理者に追加しました`)
+  }
+
+  async function removeAdmin(target: AdminRecord) {
+    if (target.uid === user.uid) { setNotice('自分自身の管理者権限は解除できません'); return }
+    if (!window.confirm(`${target.displayName ?? target.uid}さんの管理者権限を解除しますか？`)) return
+    await deleteDoc(doc(db, 'admins', target.uid))
+    setNotice('管理者権限を解除しました')
+  }
+
   const navItems: Array<{ id: AdminTab; label: string; icon: React.ReactNode; badge?: number }> = [
     { id: 'overview', label: '概要', icon: <LayoutDashboard size={19} /> },
     { id: 'users', label: 'ユーザー', icon: <Users size={19} /> },
+    { id: 'admins', label: '管理者', icon: <KeyRound size={19} /> },
     { id: 'reports', label: '通報', icon: <FileWarning size={19} />, badge: pendingReports.length },
     { id: 'notes', label: '広場', icon: <MessageSquareText size={19} /> },
     { id: 'groups', label: 'グループ', icon: <UsersRound size={19} /> },
@@ -89,6 +107,8 @@ export function AdminDashboard({ user, profile }: { user: User; profile: UserPro
       {tab === 'overview' && <><div className="admin-title"><p>OVERVIEW</p><h1>運営ダッシュボード</h1><span>サービスの状態と、対応が必要な項目を確認できます。</span></div><div className="admin-metrics"><article><Users size={20} /><div><strong>{profiles.length}</strong><span>ユーザー</span></div></article><article><FileWarning size={20} /><div><strong>{pendingReports.length}</strong><span>未対応の通報</span></div></article><article><MessageSquareText size={20} /><div><strong>{notes.filter((item) => item.expiresAt > Date.now()).length}</strong><span>公開中の投稿</span></div></article><article><Ban size={20} /><div><strong>{Object.values(moderation).filter((item) => item.status === 'suspended').length}</strong><span>利用停止中</span></div></article></div><div className="admin-overview-grid"><section><div className="admin-section-heading"><h2>対応が必要な通報</h2><button onClick={() => setTab('reports')}>すべて見る</button></div>{pendingReports.slice(0, 5).map((report) => <ReportRow key={report.id} report={report} profileMap={profileMap} onReview={reviewReport} />)}{!pendingReports.length && <AdminEmpty text="未対応の通報はありません" />}</section><section><div className="admin-section-heading"><h2>最近の操作</h2><button onClick={() => setTab('audit')}>すべて見る</button></div>{actions.slice(0, 6).map((action) => <ActionRow key={action.id} action={action} profileMap={profileMap} />)}{!actions.length && <AdminEmpty text="管理操作はまだありません" />}</section></div></>}
 
       {tab === 'users' && <><div className="admin-title"><p>USERS</p><h1>ユーザー管理</h1><span>検索、利用状況の確認、アプリ利用停止を行います。</span></div><label className="admin-search"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="表示名またはUIDで検索" /></label><div className="admin-table"><div className="admin-table__head"><span>ユーザー</span><span>公開状態</span><span>利用状態</span><span>操作</span></div>{filteredProfiles.map((item) => { const suspended = moderation[item.uid]?.status === 'suspended'; return <div className="admin-table__row" key={item.uid}><div className="admin-user"><Avatar config={item.avatar} size="small" /><div><strong>{item.displayName}</strong><small>{item.uid}</small></div></div><span className={`admin-pill ${item.discoverable ? 'is-green' : ''}`}>{item.discoverable ? '公開' : '非公開'}</span><span className={`admin-pill ${suspended ? 'is-red' : 'is-green'}`}>{suspended ? '停止中' : '利用中'}</span><button className={suspended ? 'admin-restore' : 'admin-danger'} onClick={() => toggleSuspension(item)} disabled={item.uid === user.uid}>{suspended ? '停止解除' : '利用停止'}</button></div>})}</div></>}
+
+      {tab === 'admins' && <><div className="admin-title"><p>ADMINISTRATORS</p><h1>管理者の管理</h1><span>管理画面へアクセスできる人を追加・解除します。管理者は慎重に選んでください。</span></div><div className="admin-admin-grid"><section><div className="admin-section-heading"><h2>現在の管理者</h2><span>{admins.length}人</span></div><div className="admin-card-list">{admins.map((admin) => { const adminProfile = profileMap.get(admin.uid); return <article className="admin-person" key={admin.uid}>{adminProfile ? <Avatar config={adminProfile.avatar} size="small" /> : <ShieldCheck size={22} />}<div><strong>{adminProfile?.displayName ?? admin.displayName ?? admin.uid}</strong><small>{admin.uid === user.uid ? 'あなた · ' : ''}{admin.email ?? admin.uid}</small></div><button className="admin-danger" onClick={() => removeAdmin(admin)} disabled={admin.uid === user.uid}>{admin.uid === user.uid ? '自分' : '解除'}</button></article>})}</div></section><section><div className="admin-section-heading"><h2>ユーザーから追加</h2><span>既存アカウントのみ</span></div><label className="admin-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="表示名またはUIDで検索" /></label><div className="admin-candidate-list">{filteredProfiles.filter((item) => !admins.some((admin) => admin.uid === item.uid)).map((item) => <article className="admin-person" key={item.uid}><Avatar config={item.avatar} size="small" /><div><strong>{item.displayName}</strong><small>{item.uid}</small></div><button className="admin-primary admin-add" onClick={() => addAdmin(item)}><UserPlus size={14} />追加</button></article>)}{!filteredProfiles.filter((item) => !admins.some((admin) => admin.uid === item.uid)).length && <AdminEmpty text="追加できるユーザーはいません" />}</div></section></div></>}
 
       {tab === 'reports' && <><div className="admin-title"><p>REPORTS</p><h1>通報管理</h1><span>DMの本文は表示せず、通報された対象と理由だけを扱います。</span></div><div className="admin-card-list">{reports.map((report) => <ReportRow key={report.id} report={report} profileMap={profileMap} onReview={reviewReport} expanded />)}{!reports.length && <AdminEmpty text="通報はありません" />}</div></>}
 
