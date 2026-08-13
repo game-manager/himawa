@@ -8,6 +8,7 @@ import {
   linkWithPopup,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
+  reload,
   signOut,
   updatePassword,
   verifyBeforeUpdateEmail,
@@ -49,6 +50,7 @@ import {
   X,
 } from 'lucide-react'
 import { auth, db } from '../lib/firebase'
+import { getAuthMethodEmails } from '../lib/authMethods'
 import type {
   Conversation,
   DirectMessage,
@@ -174,13 +176,25 @@ function AccountSettings({ user, onNotice }: { user: User; onNotice: (message: s
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [busyAction, setBusyAction] = useState<'email' | 'password' | 'google' | null>(null)
-  const [hasPassword, setHasPassword] = useState(() => user.providerData.some((item) => item.providerId === 'password'))
-  const [hasGoogle, setHasGoogle] = useState(() => user.providerData.some((item) => item.providerId === 'google.com'))
+  const [methodEmails, setMethodEmails] = useState(() => getAuthMethodEmails(user.providerData))
+  const hasPassword = Boolean(methodEmails.passwordEmail)
+  const hasGoogle = Boolean(methodEmails.googleEmail)
+
+  async function refreshMethods() {
+    await reload(user)
+    setMethodEmails(getAuthMethodEmails(user.providerData))
+  }
+
+  useEffect(() => {
+    refreshMethods().catch(() => undefined)
+    const refreshOnFocus = () => refreshMethods().catch(() => undefined)
+    window.addEventListener('focus', refreshOnFocus)
+    return () => window.removeEventListener('focus', refreshOnFocus)
+  }, [user])
 
   async function reauthenticate(password: string) {
-    if (hasPassword) {
-      if (!user.email || !password) throw Object.assign(new Error('Password required'), { code: 'auth/wrong-password' })
-      await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, password))
+    if (hasPassword && methodEmails.passwordEmail && password) {
+      await reauthenticateWithCredential(user, EmailAuthProvider.credential(methodEmails.passwordEmail, password))
       return
     }
     if (hasGoogle) {
@@ -189,6 +203,7 @@ function AccountSettings({ user, onNotice }: { user: User; onNotice: (message: s
       await reauthenticateWithPopup(user, provider)
       return
     }
+    if (hasPassword) throw Object.assign(new Error('Password required'), { code: 'auth/wrong-password' })
     throw new Error('No authentication provider')
   }
 
@@ -201,15 +216,19 @@ function AccountSettings({ user, onNotice }: { user: User; onNotice: (message: s
     event.preventDefault()
     setError('')
     const nextEmail = newEmail.trim()
-    if (!nextEmail || nextEmail === user.email) {
-      setError(nextEmail === user.email ? '現在と違うメールアドレスを入力してください。' : '新しいメールアドレスを入力してください。')
+    if (!hasPassword) {
+      setError('先にパスワードを追加すると、メール用のログインアドレスを設定できます。')
+      return
+    }
+    if (!nextEmail || nextEmail === methodEmails.passwordEmail) {
+      setError(nextEmail === methodEmails.passwordEmail ? '現在と違うメールアドレスを入力してください。' : '新しいメールアドレスを入力してください。')
       return
     }
     setBusyAction('email')
     try {
       await reauthenticate(emailPassword)
       auth.languageCode = 'ja'
-      await verifyBeforeUpdateEmail(user, nextEmail)
+      await verifyBeforeUpdateEmail(user, nextEmail, { url: `${window.location.origin}${window.location.pathname}` })
       setNewEmail('')
       setEmailPassword('')
       onNotice('新しいメールアドレスに確認メールを送りました。メール内のリンクを開くと変更されます。')
@@ -240,7 +259,7 @@ function AccountSettings({ user, onNotice }: { user: User; onNotice: (message: s
       } else {
         if (!user.email) throw new Error('Email is required')
         await linkWithCredential(user, EmailAuthProvider.credential(user.email, newPassword))
-        setHasPassword(true)
+        await refreshMethods()
         onNotice('メールアドレスとパスワードでもログインできるようになりました。')
       }
       setCurrentPassword('')
@@ -260,7 +279,7 @@ function AccountSettings({ user, onNotice }: { user: User; onNotice: (message: s
       const provider = new GoogleAuthProvider()
       provider.setCustomParameters({ prompt: 'select_account' })
       await linkWithPopup(user, provider)
-      setHasGoogle(true)
+      await refreshMethods()
       onNotice('Googleアカウントを連携しました。次回からGoogleでもログインできます。')
     } catch (reason) {
       showError(reason)
@@ -273,29 +292,27 @@ function AccountSettings({ user, onNotice }: { user: User; onNotice: (message: s
     <section className="account-settings-card">
       <div className="account-settings-heading">
         <div className="settings-icon"><AtSign size={20} /></div>
-        <div><h3>ログイン情報</h3><p>メールアドレスやパスワードを安全に変更できます。</p></div>
+        <div><h3>ログイン方法</h3><p>ログイン方法ごとに、使うメールアドレスを確認できます。</p></div>
       </div>
-      <div className="current-account-row">
-        <div><span>現在のメールアドレス</span><strong>{user.email ?? '未設定'}</strong></div>
-        <div className="provider-chips">
-          {hasGoogle && <span>Google</span>}
-          {hasPassword && <span>パスワード</span>}
-        </div>
+      <div className="sign-in-method-list">
+        {hasPassword && <div className="sign-in-method-row"><span className="method-badge">メール</span><div><span>メール＋パスワードでログイン</span><strong>{methodEmails.passwordEmail}</strong></div></div>}
+        {hasGoogle && <div className="sign-in-method-row"><span className="method-badge method-badge--google">G</span><div><span>Googleでログイン</span><strong>{methodEmails.googleEmail}</strong></div></div>}
       </div>
+      {hasPassword && hasGoogle && methodEmails.passwordEmail !== methodEmails.googleEmail && <p className="account-method-hint">2つのメールアドレスは違いますが、どちらも同じHIMAWAアカウントにつながっています。メール＋パスワードで入るときは上の「メール」のアドレスを使ってください。</p>}
 
       {error && <p className="form-error account-form-error" role="alert">{error}</p>}
 
-      <form className="account-change-form" onSubmit={changeEmail}>
+      {hasPassword ? <form className="account-change-form" onSubmit={changeEmail}>
         <div className="account-form-title"><AtSign size={17} /><strong>メールアドレスを変更</strong></div>
         <label>新しいメールアドレス<input type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} autoComplete="email" placeholder="new@example.com" required /></label>
-        {hasPassword && <label>現在のパスワード<input type="password" value={emailPassword} onChange={(event) => setEmailPassword(event.target.value)} autoComplete="current-password" required /></label>}
+        {hasPassword && <label>現在のパスワード{hasGoogle ? '（空欄ならGoogleで本人確認）' : ''}<input type="password" value={emailPassword} onChange={(event) => setEmailPassword(event.target.value)} autoComplete="current-password" required={!hasGoogle} /></label>}
         <p className="account-form-note">新しいアドレスに確認メールを送ります。リンクを開くまで変更は完了しません。</p>
         <button className="account-submit-button" type="submit" disabled={busyAction !== null}>{busyAction === 'email' ? '送信中…' : '確認メールを送る'}</button>
-      </form>
+      </form> : <div className="account-change-form account-change-form--info"><div className="account-form-title"><AtSign size={17} /><strong>メールアドレスでログインしたい場合</strong></div><p className="account-form-note">まず「パスワードを追加」してください。Googleのメールとは別に、メール＋パスワード用のログイン方法を作れます。</p></div>}
 
       <form className="account-change-form" onSubmit={changePassword}>
         <div className="account-form-title"><KeyRound size={17} /><strong>{hasPassword ? 'パスワードを変更' : 'パスワードを追加'}</strong></div>
-        {hasPassword && <label>現在のパスワード<input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required /></label>}
+        {hasPassword && <label>現在のパスワード{hasGoogle ? '（空欄ならGoogleで本人確認）' : ''}<input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required={!hasGoogle} /></label>}
         <label>新しいパスワード<input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" minLength={8} placeholder="8文字以上" required /></label>
         <label>新しいパスワード（確認）<input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={8} required /></label>
         {!hasPassword && <p className="account-form-note">Googleで本人確認したあと、メールアドレスでもログインできるようにします。</p>}

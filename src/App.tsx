@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { User } from 'firebase/auth'
-import { onAuthStateChanged, signOut } from 'firebase/auth'
+import { onAuthStateChanged, reload, signOut } from 'firebase/auth'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { auth, db } from './lib/firebase'
 import type { UserProfile } from './lib/models'
@@ -26,7 +26,8 @@ export default function App() {
     return () => window.removeEventListener('hashchange', updateRoute)
   }, [])
 
-  useEffect(() => onAuthStateChanged(auth, (nextUser) => {
+  useEffect(() => onAuthStateChanged(auth, async (nextUser) => {
+    if (nextUser) await reload(nextUser).catch(() => undefined)
     setUser(nextUser)
     setProfile(null)
     setIsAdmin(false)

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
 } from 'firebase/auth'
@@ -26,11 +27,13 @@ export function AuthScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [helpMessage, setHelpMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setError('')
+    setHelpMessage('')
     setLoading(true)
     try {
       if (mode === 'signup') {
@@ -38,6 +41,27 @@ export function AuthScreen() {
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password)
       }
+    } catch (reason) {
+      const code = typeof reason === 'object' && reason && 'code' in reason ? String(reason.code) : undefined
+      setError(authErrorMessage(code))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function resetPassword() {
+    setError('')
+    setHelpMessage('')
+    const loginEmail = email.trim()
+    if (!loginEmail) {
+      setError('パスワード用のログインメールを入力してください。')
+      return
+    }
+    setLoading(true)
+    try {
+      auth.languageCode = 'ja'
+      await sendPasswordResetEmail(auth, loginEmail)
+      setHelpMessage('パスワード再設定メールを送信しました。届かない場合は、Googleでログインして設定の「ログイン方法」を確認してください。')
     } catch (reason) {
       const code = typeof reason === 'object' && reason && 'code' in reason ? String(reason.code) : undefined
       setError(authErrorMessage(code))
@@ -90,10 +114,12 @@ export function AuthScreen() {
             <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} placeholder="6文字以上" minLength={6} required />
           </label>
           {error && <p className="form-error" role="alert">{error}</p>}
+          {helpMessage && <p className="form-success" role="status">{helpMessage}</p>}
           <button className="primary-button" type="submit" disabled={loading}>
             {loading ? 'つないでいます…' : mode === 'signup' ? '無料ではじめる' : 'ログインする'}
             {!loading && <ArrowRight size={18} />}
           </button>
+          {mode === 'login' && <button className="login-help-button" type="button" onClick={resetPassword} disabled={loading}>パスワードを忘れた・メール変更後に入れない</button>}
         </form>
         <div className="auth-divider"><span>または</span></div>
         <button className="google-auth-button" type="button" onClick={signInWithGoogle} disabled={loading}>
