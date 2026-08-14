@@ -42,6 +42,7 @@ export type UserProfile = {
   discoverable?: boolean
   bio?: string
   statusHidden?: boolean
+  pushPromptShownAt?: unknown
   createdAt?: unknown
 }
 

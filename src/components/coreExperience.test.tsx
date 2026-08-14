@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_AVATAR } from './Avatar'
 import { FriendStatusCard } from './FriendStatusCard'
 import { StatusComposer } from './StatusComposer'
+import { NotificationPermissionPrompt } from './Dashboard'
 
 const profile = {
   uid: 'friend-1',
@@ -82,5 +83,15 @@ describe('HIMAWA core experience', () => {
     expect(html).toContain('1時間')
     expect(html).toContain('3時間')
     expect(html).toContain('今日いっぱい')
+  })
+
+  it('explains notification scope and where the choice can be changed later', () => {
+    const html = renderToStaticMarkup(<NotificationPermissionPrompt busy={false} onAnswer={vi.fn()} />)
+
+    expect(html).toContain('HIMAWAは通知を送信します')
+    expect(html).toContain('DM・誘い・友達申請')
+    expect(html).toContain('「自分」→「通知」で変更できます')
+    expect(html).toContain('許可しない')
+    expect(html).toContain('許可')
   })
 })

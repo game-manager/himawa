@@ -40,6 +40,15 @@ describe('HIMAWA Firestore rules', () => {
     await assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), 'users', 'alice')))
   })
 
+  it('lets only the owner record that the notification prompt was shown', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'users', 'alice'), profile('alice', 'ALICE2'))
+    })
+
+    await assertSucceeds(updateDoc(doc(testEnv.authenticatedContext('alice').firestore(), 'users', 'alice'), { pushPromptShownAt: serverTimestamp() }))
+    await assertFails(updateDoc(doc(testEnv.authenticatedContext('mallory').firestore(), 'users', 'alice'), { pushPromptShownAt: serverTimestamp() }))
+  })
+
   it('allows exact code lookup but prevents code enumeration', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), 'codes', 'ALICE2'), { uid: 'alice', displayName: 'ありす', friendCode: 'ALICE2' })
