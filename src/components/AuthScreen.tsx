@@ -89,9 +89,9 @@ export function AuthScreen() {
     <main className="auth-page">
       <section className="auth-hero">
         <div className="brand-mark" aria-hidden="true"><span /></div>
-        <p className="eyebrow">放課後の気配SNS</p>
+        <p className="eyebrow">友達限定・今だけSNS</p>
         <h1>HIMAWA</h1>
-        <p className="hero-copy">「ひま？」って聞く、<br />その前に。</p>
+        <p className="hero-copy">ひま？が、<br />見える。</p>
         <div className="feature-chips" aria-label="HIMAWAの特徴">
           <span><Sparkles size={15} /> 友達だけ</span>
           <span><MapPinOff size={15} /> 位置情報なし</span>

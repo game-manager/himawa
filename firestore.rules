@@ -40,7 +40,7 @@ service cloud.firestore {
     function validProfile(uid) {
       return request.resource.data.keys().hasOnly([
           'uid', 'displayName', 'friendCode', 'avatar', 'currentStatus', 'defaultStatusVisibility',
-          'discoverable', 'bio', 'createdAt'
+          'discoverable', 'bio', 'statusHidden', 'createdAt'
         ])
         && request.resource.data.uid == uid
         && request.resource.data.displayName is string
@@ -116,12 +116,7 @@ service cloud.firestore {
     }
 
     match /statusShares/{uid} {
-      allow get: if signedIn() && !isBlocked(uid) && (
-        isOwner(uid)
-        || resource.data.visibility == 'public'
-        || (resource.data.visibility == 'friends' && isFriend(uid))
-        || (resource.data.visibility == 'followers' && follows(uid))
-      );
+      allow get: if signedIn() && !isBlocked(uid) && (isOwner(uid) || isFriend(uid));
       allow list: if false;
       allow create, update: if isOwner(uid)
         && request.resource.data.uid == uid
@@ -129,8 +124,14 @@ service cloud.firestore {
         && request.resource.data.text.size() >= 1
         && request.resource.data.text.size() <= 60
         && request.resource.data.emoji is string
-        && request.resource.data.visibility in ['friends', 'followers', 'public']
-        && request.resource.data.expiresAt is number;
+        && request.resource.data.visibility == 'friends'
+        && request.resource.data.expiresAt is number
+        && (!('availability' in request.resource.data) || request.resource.data.availability in ['free', 'maybe', 'busy'])
+        && (!('activities' in request.resource.data) || (
+          request.resource.data.activities is list
+          && request.resource.data.activities.size() <= 2
+          && request.resource.data.activities.hasOnly(['game', 'food', 'outing', 'talk', 'sports', 'study', 'other'])
+        ));
       allow delete: if isOwner(uid);
     }
 
@@ -163,6 +164,12 @@ service cloud.firestore {
         && request.resource.data.fromUid == request.auth.uid
         && request.resource.data.toUid is string
         && request.resource.data.kind in ['play', 'game', 'talk', 'cheer']
+        && (!('message' in request.resource.data) || (
+          request.resource.data.message is string
+          && request.resource.data.message.size() >= 1
+          && request.resource.data.message.size() <= 60
+        ))
+        && (!('activity' in request.resource.data) || request.resource.data.activity in ['game', 'food', 'outing', 'talk', 'sports', 'study', 'other'])
         && isFriend(request.resource.data.toUid)
         && !isBlocked(request.resource.data.toUid);
       allow read: if signedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);

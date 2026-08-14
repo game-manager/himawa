@@ -86,7 +86,7 @@ describe('HIMAWA Firestore rules', () => {
     await assertFails(getDoc(doc(bob, 'users', 'alice')))
   })
 
-  it('enforces status visibility for friends, followers, and public viewers', async () => {
+  it('keeps every status share limited to friends', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const admin = context.firestore()
       await setDoc(doc(admin, 'users', 'alice'), profile('alice', 'ALICE2'))
@@ -95,7 +95,7 @@ describe('HIMAWA Firestore rules', () => {
       await setDoc(doc(admin, 'users', 'bob', 'friends', 'alice'), { uid: 'alice', requestId: 'request-1' })
       await setDoc(doc(admin, 'statusShares', 'alice'), {
         uid: 'alice', displayName: 'ありす', avatar, text: '放課後あそべる', emoji: '🌻',
-        visibility: 'friends', expiresAt: Date.now() + 60_000, updatedAt: Date.now(),
+        availability: 'free', activities: ['game'], visibility: 'friends', expiresAt: Date.now() + 60_000, updatedAt: Date.now(),
       })
     })
 
@@ -112,7 +112,26 @@ describe('HIMAWA Firestore rules', () => {
         visibility: 'followers', expiresAt: Date.now() + 60_000, updatedAt: Date.now(),
       })
     })
-    await assertSucceeds(getDoc(doc(mallory, 'statusShares', 'alice')))
+    await assertFails(getDoc(doc(mallory, 'statusShares', 'alice')))
+
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(setDoc(doc(alice, 'statusShares', 'alice'), {
+      uid: 'alice', displayName: 'ありす', avatar, text: 'みんなで話そう', emoji: '💬',
+      visibility: 'public', expiresAt: Date.now() + 60_000, updatedAt: Date.now(),
+    }))
+  })
+
+  it('allows short invitations but rejects oversized invitation text', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const admin = context.firestore()
+      await setDoc(doc(admin, 'users', 'alice'), profile('alice', 'ALICE2'))
+      await setDoc(doc(admin, 'users', 'bob'), profile('bob', 'BOB222'))
+      await setDoc(doc(admin, 'users', 'alice', 'friends', 'bob'), { uid: 'bob', requestId: 'request-1' })
+      await setDoc(doc(admin, 'users', 'bob', 'friends', 'alice'), { uid: 'alice', requestId: 'request-1' })
+    })
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    await assertSucceeds(setDoc(doc(alice, 'pokes', 'invite-1'), { fromUid: 'alice', fromName: 'ありす', toUid: 'bob', kind: 'game', activity: 'game', message: 'ゲームしよ', readAt: null }))
+    await assertFails(setDoc(doc(alice, 'pokes', 'invite-2'), { fromUid: 'alice', fromName: 'ありす', toUid: 'bob', kind: 'game', message: 'あ'.repeat(61), readAt: null }))
   })
 
   it('allows DMs only while both users are friends', async () => {

@@ -35,16 +35,15 @@ import {
   ChevronRight,
   Compass,
   Copy,
-  Eye,
   Home,
   KeyRound,
   LogOut,
   MessageCircle,
   Plus,
   Send,
-  Settings,
   ShieldCheck,
-  Sparkles,
+  Share2,
+  UserRound,
   UserMinus,
   UsersRound,
   X,
@@ -52,6 +51,7 @@ import {
 import { auth, db } from '../lib/firebase'
 import { getAuthMethodEmails } from '../lib/authMethods'
 import type {
+  ActivityKind,
   Conversation,
   DirectMessage,
   FriendEntry,
@@ -63,24 +63,25 @@ import type {
   PokeKind,
   PublicProfile,
   StatusShare,
-  StatusVisibility,
   UserProfile,
 } from '../lib/models'
 import {
-  createStatus,
+  ACTIVITY_OPTIONS,
+  activityOption,
+  availabilityOption,
+  createAvailabilityStatus,
+  getAvailability,
   getRemainingLabel,
   normalizeStatus,
   pokeLabel,
-  POKE_OPTIONS,
-  STATUS_DURATIONS,
-  STATUS_EMOJIS,
-  VISIBILITY_LABELS,
 } from '../lib/status'
 import { Avatar } from './Avatar'
+import { FriendStatusCard, type FriendStatusView } from './FriendStatusCard'
+import { StatusComposer } from './StatusComposer'
 
-type Tab = 'home' | 'square' | 'dm' | 'groups' | 'settings'
+type Tab = 'home' | 'friends' | 'square' | 'dm' | 'groups' | 'settings'
 type ModalKind = 'status' | 'invite' | 'poke' | 'notifications' | null
-type FriendView = { profile: PublicProfile; status: StatusShare | null }
+type FriendView = FriendStatusView
 
 function timeOf(value?: { toMillis?: () => number }) {
   return value?.toMillis?.() ?? 0
@@ -92,11 +93,28 @@ function randomCode() {
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const sheetRef = useRef<HTMLElement>(null)
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => { onCloseRef.current = onClose }, [onClose])
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    const handleKeyDown = (event: KeyboardEvent) => event.key === 'Escape' && onCloseRef.current()
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', handleKeyDown)
+    sheetRef.current?.focus()
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
+
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="modal-sheet" role="dialog" aria-modal="true" aria-label={title}>
+      <section ref={sheetRef} tabIndex={-1} className="modal-sheet" role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-handle" />
-        <header><h2>{title}</h2><button className="icon-button" onClick={onClose} aria-label="閉じる"><X size={20} /></button></header>
+        <header><h2>{title}</h2><button type="button" className="icon-button" onClick={onClose} aria-label="閉じる"><X size={20} /></button></header>
         {children}
       </section>
     </div>
@@ -105,54 +123,6 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 
 function Empty({ emoji, title, body }: { emoji: string; title: string; body: string }) {
   return <div className="social-empty"><span>{emoji}</span><h3>{title}</h3><p>{body}</p></div>
-}
-
-function StatusComposer({
-  groups,
-  initialVisibility,
-  busy,
-  onSubmit,
-}: {
-  groups: Group[]
-  initialVisibility: Exclude<StatusVisibility, 'groups'>
-  busy: boolean
-  onSubmit: (value: { text: string; emoji: string; visibility: StatusVisibility; duration: number; groupIds: string[] }) => void
-}) {
-  const [text, setText] = useState('')
-  const [emoji, setEmoji] = useState('🌻')
-  const [visibility, setVisibility] = useState<StatusVisibility>(initialVisibility)
-  const [duration, setDuration] = useState(60)
-  const [groupIds, setGroupIds] = useState<string[]>([])
-
-  return (
-    <form className="status-composer" onSubmit={(event) => {
-      event.preventDefault()
-      if (text.trim()) onSubmit({ text, emoji, visibility, duration, groupIds })
-    }}>
-      <label className="composer-input"><span>{emoji}</span><input value={text} onChange={(event) => setText(event.target.value)} placeholder="例：放課後ゲームできる人いる？" maxLength={60} autoFocus /></label>
-      <div className="emoji-row" aria-label="絵文字を選ぶ">{STATUS_EMOJIS.map((item) => <button type="button" key={item} className={emoji === item ? 'is-selected' : ''} onClick={() => setEmoji(item)}>{item}</button>)}</div>
-      <div className="form-grid">
-        <label>公開範囲<select value={visibility} onChange={(event) => setVisibility(event.target.value as StatusVisibility)}>
-          <option value="friends">友達だけ</option><option value="followers">フォロワーまで</option><option value="public">みんなに公開</option>{groups.length > 0 && <option value="groups">グループだけ</option>}
-        </select></label>
-        <label>表示時間<select value={duration} onChange={(event) => setDuration(Number(event.target.value))}>{STATUS_DURATIONS.map((item) => <option value={item.minutes} key={item.minutes}>{item.label}</option>)}</select></label>
-      </div>
-      {visibility === 'groups' && <fieldset className="group-picker"><legend>共有するグループ</legend>{groups.map((group) => <label key={group.id}><input type="checkbox" checked={groupIds.includes(group.id)} onChange={() => setGroupIds((current) => current.includes(group.id) ? current.filter((id) => id !== group.id) : [...current, group.id])} /> {group.name}</label>)}</fieldset>}
-      <p className="privacy-hint"><Eye size={14} /> {VISIBILITY_LABELS[visibility].description}</p>
-      <button className="primary-button" type="submit" disabled={busy || !text.trim() || (visibility === 'groups' && groupIds.length === 0)}>{busy ? '共有中…' : 'この気配を共有'} <Send size={17} /></button>
-    </form>
-  )
-}
-
-function FriendCard({ friend, onPoke, onMessage }: { friend: FriendView; onPoke: () => void; onMessage: () => void }) {
-  const status = normalizeStatus(friend.status)
-  return (
-    <article className={`friend-card ${status ? '' : 'friend-card--quiet'}`}>
-      <Avatar config={friend.profile.avatar} size="medium" status={status?.emoji} />
-      <div className="friend-card__copy"><h3>{friend.profile.displayName}</h3><p>{status ? `${status.emoji} ${status.text}` : 'いまは静かです'}</p><small>{getRemainingLabel(status)}</small></div>
-      <div className="friend-card__actions"><button className="poke-button" onClick={onPoke} disabled={!status}><Sparkles size={14} /> Poke</button><button className="circle-button" onClick={onMessage} aria-label="DMを送る"><MessageCircle size={17} /></button></div>
-    </article>
-  )
 }
 
 function accountErrorMessage(code?: string) {
@@ -328,6 +298,8 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
   const [tab, setTab] = useState<Tab>('home')
   const [friends, setFriends] = useState<FriendView[]>([])
   const [friendIds, setFriendIds] = useState<string[]>([])
+  const [friendsReady, setFriendsReady] = useState(false)
+  const [friendsError, setFriendsError] = useState(false)
   const [requests, setRequests] = useState<FriendRequest[]>([])
   const [pokes, setPokes] = useState<Poke[]>([])
   const [notes, setNotes] = useState<Note[]>([])
@@ -344,17 +316,32 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
   const [friendCode, setFriendCode] = useState('')
   const [noteText, setNoteText] = useState('')
   const [messageText, setMessageText] = useState('')
+  const [inviteMessage, setInviteMessage] = useState('')
   const [groupName, setGroupName] = useState('')
   const [groupCode, setGroupCode] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
+  const [now, setNow] = useState(Date.now())
+  const coreActionLock = useRef(false)
   const friendSubscriptions = useRef<Map<string, () => void>>(new Map())
   const profileCache = useRef<Map<string, PublicProfile>>(new Map())
   const statusCache = useRef<Map<string, StatusShare | null>>(new Map())
   const migratedProfileUid = useRef('')
 
-  const ownStatus = normalizeStatus(profile.currentStatus)
+  const ownStatus = normalizeStatus(profile.currentStatus, now)
   const unreadCount = useMemo(() => requests.length + pokes.filter((poke) => !poke.readAt).length, [pokes, requests])
+  const sortedFriends = useMemo(() => [...friends].sort((a, b) => {
+    const rank = { free: 0, maybe: 1, busy: 2 }
+    const aStatus = normalizeStatus(a.status, now)
+    const bStatus = normalizeStatus(b.status, now)
+    const availabilityDifference = rank[getAvailability(aStatus)] - rank[getAvailability(bStatus)]
+    if (availabilityDifference) return availabilityDifference
+    return (bStatus?.updatedAt ?? 0) - (aStatus?.updatedAt ?? 0) || a.profile.displayName.localeCompare(b.profile.displayName, 'ja')
+  }), [friends, now])
+  const invitableCount = useMemo(() => sortedFriends.filter((friend) => {
+    const status = normalizeStatus(friend.status, now)
+    return status && getAvailability(status) !== 'busy'
+  }).length, [now, sortedFriends])
 
   function refreshFriends() {
     setFriends(friendIds.map((uid) => {
@@ -368,16 +355,46 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
     migratedProfileUid.current = user.uid
     const socialProfile: PublicProfile = { uid: user.uid, displayName: profile.displayName, avatar: profile.avatar, bio: profile.bio ?? '', discoverable: profile.discoverable ?? true }
     const batch = writeBatch(db)
-    batch.set(doc(db, 'users', user.uid), { defaultStatusVisibility: profile.defaultStatusVisibility ?? 'friends', discoverable: profile.discoverable ?? true, bio: profile.bio ?? '' }, { merge: true })
+    batch.set(doc(db, 'users', user.uid), { defaultStatusVisibility: 'friends', discoverable: profile.discoverable ?? true, bio: profile.bio ?? '' }, { merge: true })
     batch.set(doc(db, 'publicProfiles', user.uid), { ...socialProfile, updatedAt: serverTimestamp() }, { merge: true })
-    if (profile.currentStatus?.kind && normalizeStatus(profile.currentStatus)) {
-      const migrated = normalizeStatus(profile.currentStatus)!
-      batch.set(doc(db, 'statusShares', user.uid), { ...migrated, uid: user.uid, displayName: profile.displayName, avatar: profile.avatar })
+    if (normalizeStatus(profile.currentStatus) && profile.currentStatus?.visibility !== 'groups') {
+      const migrated = { ...normalizeStatus(profile.currentStatus)!, visibility: 'friends' as const }
+      batch.set(doc(db, 'users', user.uid), { currentStatus: migrated }, { merge: true })
+      if (!profile.statusHidden) batch.set(doc(db, 'statusShares', user.uid), { ...migrated, uid: user.uid, displayName: profile.displayName, avatar: profile.avatar })
     }
     batch.commit().catch(() => undefined)
   }, [profile.avatar, profile.bio, profile.currentStatus, profile.defaultStatusVisibility, profile.discoverable, profile.displayName, user.uid])
 
-  useEffect(() => onSnapshot(collection(db, 'users', user.uid, 'friends'), (snapshot) => setFriendIds(snapshot.docs.map((item) => (item.data() as FriendEntry).uid))), [user.uid])
+  useEffect(() => onSnapshot(collection(db, 'users', user.uid, 'friends'), (snapshot) => {
+    setFriendIds(snapshot.docs.map((item) => (item.data() as FriendEntry).uid))
+    setFriendsReady(true)
+    setFriendsError(false)
+  }, () => {
+    setFriendsReady(true)
+    setFriendsError(true)
+  }), [user.uid])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const inviteCode = new URLSearchParams(window.location.search).get('invite')?.toUpperCase() ?? ''
+    if (inviteCode.length === 6) {
+      setFriendCode(inviteCode)
+      setModal('invite')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!profile.currentStatus || profile.currentStatus.expiresAt > now) return
+    const batch = writeBatch(db)
+    batch.set(doc(db, 'users', user.uid), { currentStatus: null }, { merge: true })
+    batch.delete(doc(db, 'statusShares', user.uid))
+    groups.forEach((group) => batch.delete(doc(db, 'groups', group.id, 'statuses', user.uid)))
+    batch.commit().catch(() => undefined)
+  }, [groups, now, profile.currentStatus, user.uid])
 
   useEffect(() => {
     const expected = new Set(friendIds)
@@ -437,12 +454,14 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
     return onSnapshot(collection(db, 'groups', selectedGroup.id, 'statuses'), (snapshot) => setGroupStatuses(snapshot.docs.map((item) => item.data() as GroupStatus).filter((item) => item.expiresAt > Date.now()).sort((a, b) => b.updatedAt - a.updatedAt)))
   }, [selectedGroup])
 
-  async function saveStatus(value: { text: string; emoji: string; visibility: StatusVisibility; duration: number; groupIds: string[] }) {
+  async function saveStatus(value: { availability: 'free' | 'maybe' | 'busy'; activities: ActivityKind[]; note: string; visibility: 'friends' | 'groups'; expiresAt: number; groupIds: string[] }) {
+    if (coreActionLock.current) return
+    coreActionLock.current = true
     setBusy(true)
     try {
-      const status = createStatus(value.text, value.emoji, value.visibility, value.duration, value.groupIds)
+      const status = createAvailabilityStatus(value.availability, value.activities, value.note, value.visibility, value.expiresAt, value.groupIds)
       const batch = writeBatch(db)
-      batch.set(doc(db, 'users', user.uid), { currentStatus: status, ...(value.visibility !== 'groups' ? { defaultStatusVisibility: value.visibility } : {}) }, { merge: true })
+      batch.set(doc(db, 'users', user.uid), { currentStatus: status, statusHidden: false, ...(value.visibility !== 'groups' ? { defaultStatusVisibility: 'friends' } : {}) }, { merge: true })
       groups.forEach((group) => batch.delete(doc(db, 'groups', group.id, 'statuses', user.uid)))
       if (value.visibility === 'groups') {
         batch.delete(doc(db, 'statusShares', user.uid))
@@ -451,8 +470,14 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
         batch.set(doc(db, 'statusShares', user.uid), { ...status, uid: user.uid, displayName: profile.displayName, avatar: profile.avatar })
       }
       await batch.commit()
-      setModal(null); setNotice('今の気配を共有しました')
-    } catch { setNotice('気配を更新できませんでした') } finally { setBusy(false) }
+      setModal(null)
+      setNotice(value.availability === 'free' ? 'ひまになりました 🌻' : value.availability === 'maybe' ? '誘われたら行ける、にしました' : '今は無理、にしました')
+    } catch { setNotice('状態を更新できませんでした。もう一度試してね') } finally { setBusy(false); coreActionLock.current = false }
+  }
+
+  async function quickSetFree() {
+    if (busy) return
+    await saveStatus({ availability: 'free', activities: [], note: '', visibility: 'friends', expiresAt: Date.now() + 60 * 60_000, groupIds: [] })
   }
 
   async function sendRequest() {
@@ -488,13 +513,28 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
     } catch { setNotice('申請を更新できませんでした') } finally { setBusy(false) }
   }
 
-  async function sendPoke(kind: PokeKind) {
-    if (!pokeTarget) return
+  async function sendInvite(target: PublicProfile, activity?: ActivityKind, customMessage?: string) {
+    if (coreActionLock.current) return
+    coreActionLock.current = true
     setBusy(true)
     try {
-      await addDoc(collection(db, 'pokes'), { fromUid: user.uid, fromName: profile.displayName, toUid: pokeTarget.uid, kind, readAt: null, createdAt: serverTimestamp() })
-      setModal(null); setNotice(`${pokeTarget.displayName}さんに「${pokeLabel(kind).label}」を送りました`)
-    } catch { setNotice('Pokeを送れませんでした') } finally { setBusy(false) }
+      const activityMeta = activityOption(activity)
+      const kind: PokeKind = activityMeta?.pokeKind ?? 'play'
+      const message = customMessage?.trim() || activityMeta?.inviteLabel || '遊ぼう'
+      await addDoc(collection(db, 'pokes'), {
+        fromUid: user.uid,
+        fromName: profile.displayName,
+        toUid: target.uid,
+        kind,
+        ...(activity ? { activity } : {}),
+        message,
+        readAt: null,
+        createdAt: serverTimestamp(),
+      })
+      setInviteMessage('')
+      setModal(null)
+      setNotice(`${target.displayName}さんを「${message}」に誘いました 🌻`)
+    } catch { setNotice('誘いを送れませんでした。もう一度試してね') } finally { setBusy(false); coreActionLock.current = false }
   }
 
   async function postNote(event: FormEvent) {
@@ -566,7 +606,33 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
     await batch.commit().then(() => setNotice('公開設定を更新しました')).catch(() => setNotice('設定を更新できませんでした'))
   }
 
+  async function setGhostMode(hidden: boolean) {
+    const status = normalizeStatus(profile.currentStatus)
+    const batch = writeBatch(db)
+    batch.set(doc(db, 'users', user.uid), { statusHidden: hidden }, { merge: true })
+    batch.delete(doc(db, 'statusShares', user.uid))
+    groups.forEach((group) => batch.delete(doc(db, 'groups', group.id, 'statuses', user.uid)))
+    if (!hidden && status) {
+      if (status.visibility === 'groups') {
+        status.groupIds?.forEach((groupId) => batch.set(doc(db, 'groups', groupId, 'statuses', user.uid), { ...status, uid: user.uid, displayName: profile.displayName, avatar: profile.avatar }))
+      } else {
+        batch.set(doc(db, 'statusShares', user.uid), { ...status, visibility: 'friends', uid: user.uid, displayName: profile.displayName, avatar: profile.avatar })
+      }
+    }
+    await batch.commit().then(() => setNotice(hidden ? '友達から状態を隠しました' : '状態の共有を再開しました')).catch(() => setNotice('非表示設定を更新できませんでした'))
+  }
+
   async function copyCode(value = profile.friendCode) { await navigator.clipboard.writeText(value); setNotice('コードをコピーしました') }
+
+  async function shareInvite() {
+    const url = new URL(window.location.href)
+    url.search = ''
+    url.hash = ''
+    url.searchParams.set('invite', profile.friendCode)
+    const shareData = { title: 'HIMAWAで友達になろう', text: `${profile.displayName}さんからHIMAWAの招待が届きました 🌻`, url: url.toString() }
+    if (navigator.share) await navigator.share(shareData).catch(() => undefined)
+    else await navigator.clipboard.writeText(url.toString()).then(() => setNotice('招待リンクをコピーしました'))
+  }
 
   async function removeFriend(friend: PublicProfile, block = false) {
     if (!window.confirm(`${friend.displayName}さんを${block ? 'ブロック' : '友達から削除'}しますか？`)) return
@@ -587,16 +653,72 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
     avatar: selectedConversation.participantAvatars[selectedConversation.participants.find((id) => id !== user.uid) ?? ''],
   } : null
 
+  const ownAvailability = getAvailability(ownStatus)
+  const ownAvailabilityMeta = availabilityOption(ownAvailability)
+  const ownActivities = ownStatus?.activities?.map((item) => activityOption(item)).filter((item): item is NonNullable<typeof item> => Boolean(item)) ?? []
+  const inviteOptions = (() => {
+    const targetStatus = pokeTarget ? normalizeStatus(friends.find((item) => item.profile.uid === pokeTarget.uid)?.status ?? null, now) : null
+    const preferred = targetStatus?.activities ?? []
+    return [...ACTIVITY_OPTIONS].sort((a, b) => {
+      const aIndex = preferred.indexOf(a.value)
+      const bIndex = preferred.indexOf(b.value)
+      if (aIndex >= 0 && bIndex < 0) return -1
+      if (aIndex < 0 && bIndex >= 0) return 1
+      return aIndex - bIndex
+    }).slice(0, 6)
+  })()
+
+  function renderFriendCard(friend: FriendView) {
+    return <FriendStatusCard
+      key={friend.profile.uid}
+      friend={friend}
+      now={now}
+      onInvite={(activity) => sendInvite(friend.profile, activity)}
+      onInviteOptions={() => { setPokeTarget(friend.profile); setModal('poke') }}
+      onMessage={() => openConversation(friend.profile)}
+    />
+  }
+
   return (
     <main className="app-shell">
       <header className="app-header"><div className="mini-brand"><span className="mini-brand__dot" /> HIMAWA</div><div className="header-actions"><button className="header-bell" onClick={() => setModal('notifications')} aria-label="お知らせ"><Bell size={19} />{unreadCount > 0 && <em>{unreadCount}</em>}</button><button className="header-avatar" onClick={() => setTab('settings')} aria-label="設定を開く"><Avatar config={profile.avatar} size="small" /></button></div></header>
 
       <div className="app-content">
         {tab === 'home' && <div className="home-dashboard">
-          <section className="greeting-row"><div><p>{new Date().getHours() < 17 ? 'おつかれさま' : 'こんばんは'}、</p><h1>{profile.displayName}<span>さん</span></h1></div><button className="add-friend-button" onClick={() => setModal('invite')}><Plus size={18} /> 友達</button></section>
-          <section className="my-status-card"><div className="my-status-card__top"><div><p className="section-kicker">YOUR MOMENT</p><div className={`free-status ${ownStatus ? '' : 'is-empty'}`}><span>{ownStatus?.emoji ?? '○'}</span><div><strong>{ownStatus?.text ?? '今の気配をひとことに'}</strong><small>{getRemainingLabel(ownStatus)}{ownStatus && ` · ${VISIBILITY_LABELS[ownStatus.visibility].label}`}</small></div></div></div><Avatar config={profile.avatar} size="large" status={ownStatus?.emoji} /></div><button className="status-change-button" aria-label={ownStatus ? '気配を書きかえる' : '気配を書く'} onClick={() => setModal('status')}><span>{ownStatus ? '気配を書きかえる' : '気配を書く'}</span><ChevronRight size={18} /></button></section>
-          <section className="friends-section"><div className="section-heading"><div><p className="section-kicker">FRIENDS</p><h2>友達の今</h2></div><span>{friends.length}人</span></div>{friends.length ? <div className="friend-grid">{friends.map((friend) => <FriendCard key={friend.profile.uid} friend={friend} onPoke={() => { setPokeTarget(friend.profile); setModal('poke') }} onMessage={() => openConversation(friend.profile)} />)}</div> : <Empty emoji="🌱" title="友達を呼んでみよう" body="コードでつながると、ここにみんなの気配が並びます。" />}</section>
+          <section className="greeting-row">
+            <div><p>ひま？が、見える。</p><h1>{profile.displayName}<span>さん</span></h1></div>
+            <button className="add-friend-button" onClick={() => setModal('invite')}><Plus size={18} /> 友達追加</button>
+          </section>
+
+          <section className={`quick-status-card quick-status-card--${ownAvailability} ${profile.statusHidden ? 'is-hidden' : ''}`}>
+            <div className="quick-status-card__summary">
+              <Avatar config={profile.avatar} size="medium" />
+              <div><p className="section-kicker">あなたの今</p><strong><span aria-hidden="true">{ownAvailabilityMeta.emoji}</span> {profile.statusHidden ? '状態を隠しています' : ownStatus ? ownAvailabilityMeta.label : '今は無理'}</strong>
+                <small>{profile.statusHidden ? '友達には表示されません' : ownStatus ? `${getRemainingLabel(ownStatus, now)} · 友達だけ` : 'ひまになったら、すぐ知らせよう'}</small>
+              </div>
+            </div>
+            {ownActivities.length > 0 && <div className="own-activity-list">{ownActivities.map((item) => <span key={item.value}>{item.emoji} {item.statusLabel}</span>)}</div>}
+            <div className="quick-status-card__actions">
+              <button className="hima-cta" onClick={ownStatus && ownAvailability === 'free' && !profile.statusHidden ? () => setModal('status') : quickSetFree} disabled={busy}>{busy ? '更新中…' : '🌻 ひま！'}</button>
+              <button className="status-detail-button" onClick={() => setModal('status')}>くわしく設定 <ChevronRight size={16} /></button>
+            </div>
+          </section>
+
+          <section className="friends-section">
+            <div className="section-heading"><div><p className="section-kicker">FRIENDS NOW</p><h2>今、誘える友達</h2></div><span>{invitableCount}人</span></div>
+            {friendsError ? <div className="inline-error" role="alert"><strong>友達の状態を読み込めませんでした</strong><p>通信を確認して、少し待ってから再読み込みしてください。</p></div>
+              : !friendsReady || (friendIds.length > 0 && friends.length < friendIds.length) ? <div className="friend-skeleton-list" aria-label="友達を読み込み中">{[0, 1, 2].map((item) => <div className="friend-skeleton" key={item}><i /><div><span /><span /><span /></div></div>)}</div>
+                : sortedFriends.length ? <div className="friend-status-list">{sortedFriends.map(renderFriendCard)}</div>
+                  : <div className="friends-empty-state"><span aria-hidden="true">🌻</span><h3>友達を追加して、<br />今ひまな人を見つけよう</h3><p>友達コードか招待リンクで、知っている友達とだけつながれます。</p><div><button className="primary-button" onClick={() => setModal('invite')}><Plus size={17} /> 友達を追加</button><button className="secondary-button" onClick={shareInvite}><Share2 size={17} /> 招待リンク</button></div></div>}
+          </section>
         </div>}
+
+        {tab === 'friends' && <section className="page-section friends-page">
+          <div className="page-title"><div><p className="section-kicker">FRIENDS</p><h1>友達</h1><p>今の状態を見て、気軽に声をかけよう。</p></div><button className="soft-button" onClick={() => setModal('invite')}><Plus size={17} /> 追加</button></div>
+          {sortedFriends.length ? <div className="friend-status-list friends-page-list">{sortedFriends.map(renderFriendCard)}</div> : <div className="friends-empty-state"><span aria-hidden="true">🌱</span><h3>最初の友達とつながろう</h3><p>招待リンクを送るか、友達コードを入力すれば始められます。</p><div><button className="primary-button" onClick={() => setModal('invite')}>友達を追加</button><button className="secondary-button" onClick={shareInvite}><Share2 size={17} /> 招待リンク</button></div></div>}
+          <h2 className="subheading">ほかのつながり方</h2>
+          <div className="social-shortcuts"><button onClick={() => setTab('groups')}><UsersRound size={20} /><div><strong>グループ</strong><span>招待された仲間と共有</span></div><ChevronRight size={17} /></button><button onClick={() => setTab('square')}><Compass size={20} /><div><strong>広場</strong><span>24時間で消えるひとこと</span></div><ChevronRight size={17} /></button></div>
+        </section>}
 
         {tab === 'square' && <section className="page-section social-page"><div className="page-title"><div><p className="section-kicker">SQUARE</p><h1>広場</h1><p>知り合う前の、軽いひとこと。写真も人気数もありません。</p></div><span className="live-chip">24hで消える</span></div><form className="note-composer" onSubmit={postNote}><Avatar config={profile.avatar} size="small" /><textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder="みんなに聞いてみたいことは？" maxLength={160} /><footer><small>{noteText.length}/160</small><button disabled={busy || !noteText.trim()}><Send size={16} /> 放す</button></footer></form><div className="note-feed">{notes.length ? notes.map((note) => <article className="note-card" key={note.id}><Avatar config={note.authorAvatar} size="small" /><div><header><strong>{note.authorName}</strong><span>{Math.max(1, Math.ceil((note.expiresAt - Date.now()) / 3_600_000))}h</span></header><p>{note.text}</p>{note.authorUid !== user.uid && <button className={following.has(note.authorUid) ? 'is-following' : ''} onClick={() => toggleFollow(note.authorUid)}>{following.has(note.authorUid) ? 'フォロー中' : 'フォローする'}</button>}{note.authorUid === user.uid && <button className="delete-note" onClick={() => deleteDoc(doc(db, 'notes', note.id))}>削除</button>}</div></article>) : <Empty emoji="🫧" title="まだ静かな広場です" body="最初のひとことを放してみよう。" />}</div></section>}
 
@@ -604,16 +726,16 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
 
         {tab === 'groups' && <section className="page-section groups-page"><div className="page-title"><div><p className="section-kicker">CIRCLES</p><h1>グループ</h1><p>友達でなくても、招待された仲間と気配を共有できます。</p></div><button className="soft-button" onClick={() => setModal('status')}><Plus size={17} /> 気配を共有</button></div><div className="group-tools"><form onSubmit={createGroup}><h2>グループを作る</h2><input value={groupName} onChange={(event) => setGroupName(event.target.value)} maxLength={20} placeholder="例：2年3組 放課後組" /><button disabled={busy || groupName.trim().length < 2}>作る</button></form><form onSubmit={joinGroup}><h2>招待コードで参加</h2><input value={groupCode} onChange={(event) => setGroupCode(event.target.value.toUpperCase())} maxLength={6} placeholder="ABC234" /><button disabled={busy || groupCode.length !== 6}>参加</button></form></div><div className="group-layout"><aside className="group-list"><h2>参加中</h2>{groups.map((group) => <button key={group.id} className={selectedGroup?.id === group.id ? 'is-active' : ''} onClick={() => setSelectedGroup(group)}><span>🌻</span><div><strong>{group.name}</strong><small>コード {group.inviteCode}</small></div><ChevronRight size={16} /></button>)}{!groups.length && <Empty emoji="👋" title="グループはまだありません" body="作るか、招待コードで参加しよう。" />}</aside><div className="group-detail">{selectedGroup ? <><header><div><h2>{selectedGroup.name}</h2><p>友達関係に関係なく、この中だけで見えます。</p></div><button onClick={() => copyCode(selectedGroup.inviteCode)}><Copy size={15} /> {selectedGroup.inviteCode}</button></header><div className="group-status-grid">{groupStatuses.length ? groupStatuses.map((status) => <article key={status.uid}><Avatar config={status.avatar} size="small" status={status.emoji} /><div><strong>{status.displayName}</strong><p>{status.emoji} {status.text}</p><small>{getRemainingLabel(status)}</small></div></article>) : <Empty emoji="🌙" title="いまは静かです" body="右上のボタンから、このグループだけに気配を共有できます。" />}</div></> : <Empty emoji="🌻" title="グループを選んでください" body="招待制の小さな居場所です。" />}</div></div></section>}
 
-        {tab === 'settings' && <section className="page-section settings-page"><p className="section-kicker">SETTINGS</p><h1>設定</h1><div className="profile-summary"><Avatar config={profile.avatar} size="medium" /><div><strong>{profile.displayName}</strong><p>{followerCount} フォロワー</p><button onClick={() => copyCode()}>{profile.friendCode} <Copy size={14} /></button></div></div><h2 className="subheading">アカウント</h2><AccountSettings user={user} onNotice={(message) => { setNotice(message); window.setTimeout(() => setNotice(''), 6000) }} />{isAdmin && <button className="admin-entry-button" onClick={() => { window.location.hash = 'admin'; window.location.reload() }}><ShieldCheck size={20} /><div><strong>管理画面を開く</strong><span>通報・ユーザー・広場を管理</span></div><ChevronRight size={18} /></button>}<h2 className="subheading">公開設定</h2><div className="privacy-settings"><label><div><strong>広場で見つけられる</strong><p>オフにするとプロフィール検索の対象外になります。</p></div><input type="checkbox" checked={profile.discoverable ?? true} onChange={(event) => updatePrivacy('discoverable', event.target.checked)} /></label><label><div><strong>気配の標準公開範囲</strong><p>気配を書くたびに変更もできます。</p></div><select value={profile.defaultStatusVisibility ?? 'friends'} onChange={(event) => updatePrivacy('defaultStatusVisibility', event.target.value)}><option value="friends">友達だけ</option><option value="followers">フォロワーまで</option><option value="public">みんなに公開</option></select></label></div><div className="safety-card"><ShieldCheck size={24} /><div><strong>安心を優先した設計</strong><p>位置情報は使いません。DMは相互の友達だけ、広場の投稿と気配は自動で消えます。</p></div></div>{friends.length > 0 && <><h2 className="subheading">友達の管理</h2><div className="settings-list">{friends.map(({ profile: friend }) => <div className="settings-friend" key={friend.uid}><Avatar config={friend.avatar} size="small" /><strong>{friend.displayName}</strong><button onClick={() => removeFriend(friend)}><UserMinus size={16} /></button><button className="danger-text" onClick={() => removeFriend(friend, true)}>ブロック</button></div>)}</div></>}<div className="settings-actions"><button onClick={() => signOut(auth)}><LogOut size={18} /> ログアウト</button><button className="danger-text" onClick={deleteAccount}>アカウントを削除</button></div></section>}
+        {tab === 'settings' && <section className="page-section settings-page"><p className="section-kicker">YOU</p><h1>自分</h1><div className="profile-summary"><Avatar config={profile.avatar} size="medium" /><div><strong>{profile.displayName}</strong><p>{followerCount} フォロワー</p><button onClick={() => copyCode()}>{profile.friendCode} <Copy size={14} /></button></div></div><h2 className="subheading">アカウント</h2><AccountSettings user={user} onNotice={(message) => { setNotice(message); window.setTimeout(() => setNotice(''), 6000) }} />{isAdmin && <button className="admin-entry-button" onClick={() => { window.location.hash = 'admin'; window.location.reload() }}><ShieldCheck size={20} /><div><strong>管理画面を開く</strong><span>通報・ユーザー・広場を管理</span></div><ChevronRight size={18} /></button>}<h2 className="subheading">プライバシー</h2><div className="privacy-settings"><label><div><strong>状態は友達だけに公開</strong><p>相互に友達になった人だけが「ひま！」を見られます。</p></div><ShieldCheck size={21} /></label><label><div><strong>ゴーストモード</strong><p>オンの間は、今の状態を友達から一時的に隠します。</p></div><input type="checkbox" checked={profile.statusHidden ?? false} onChange={(event) => setGhostMode(event.target.checked)} /></label><label><div><strong>広場で見つけられる</strong><p>オフにするとプロフィール検索の対象外になります。</p></div><input type="checkbox" checked={profile.discoverable ?? true} onChange={(event) => updatePrivacy('discoverable', event.target.checked)} /></label></div><div className="safety-card"><ShieldCheck size={24} /><div><strong>安心を優先した設計</strong><p>位置情報は使いません。DMは相互の友達だけ、状態は期限が来ると自動で消えます。</p></div></div>{friends.length > 0 && <><h2 className="subheading">友達の管理</h2><div className="settings-list">{friends.map(({ profile: friend }) => <div className="settings-friend" key={friend.uid}><Avatar config={friend.avatar} size="small" /><strong>{friend.displayName}</strong><button onClick={() => removeFriend(friend)} aria-label={`${friend.displayName}さんを友達から削除`}><UserMinus size={16} /></button><button className="danger-text" onClick={() => removeFriend(friend, true)}>ブロック</button></div>)}</div></>}<div className="settings-actions"><button onClick={() => signOut(auth)}><LogOut size={18} /> ログアウト</button><button className="danger-text" onClick={deleteAccount}>アカウントを削除</button></div></section>}
       </div>
 
-      <nav className="bottom-nav" aria-label="メインメニュー"><button className={tab === 'home' ? 'is-active' : ''} onClick={() => setTab('home')}><Home size={21} /><span>ホーム</span></button><button className={tab === 'square' ? 'is-active' : ''} onClick={() => setTab('square')}><Compass size={21} /><span>広場</span></button><button className={tab === 'dm' ? 'is-active' : ''} onClick={() => setTab('dm')}><MessageCircle size={21} /><span>DM</span></button><button className={tab === 'groups' ? 'is-active' : ''} onClick={() => setTab('groups')}><UsersRound size={21} /><span>グループ</span></button><button className={tab === 'settings' ? 'is-active' : ''} onClick={() => setTab('settings')}><Settings size={21} /><span>設定</span></button></nav>
+      <nav className="bottom-nav" aria-label="メインメニュー"><button className={tab === 'home' ? 'is-active' : ''} onClick={() => setTab('home')}><Home size={21} /><span>ホーム</span></button><button className={tab === 'friends' || tab === 'groups' || tab === 'square' ? 'is-active' : ''} onClick={() => setTab('friends')}><UsersRound size={21} /><span>友達</span></button><button className={tab === 'dm' ? 'is-active' : ''} onClick={() => setTab('dm')}><MessageCircle size={21} /><span>DM</span></button><button className={tab === 'settings' ? 'is-active' : ''} onClick={() => setTab('settings')}><UserRound size={21} /><span>自分</span></button></nav>
 
       {notice && <button className="toast" onClick={() => setNotice('')}>{notice}</button>}
-      {modal === 'status' && <Modal title="今の気配を書く" onClose={() => setModal(null)}><StatusComposer groups={groups} initialVisibility={profile.defaultStatusVisibility ?? 'friends'} busy={busy} onSubmit={saveStatus} /></Modal>}
-      {modal === 'invite' && <Modal title="友達とつながる" onClose={() => setModal(null)}><div className="my-code-card"><p>きみの友達コード</p><strong>{profile.friendCode}</strong><button onClick={() => copyCode()}><Copy size={16} /> コピー</button></div><div className="divider"><span>または</span></div><label className="code-input-label">友達のコード<input value={friendCode} onChange={(event) => setFriendCode(event.target.value.toUpperCase())} maxLength={6} placeholder="ABC234" /></label><button className="primary-button" disabled={busy} onClick={sendRequest}>友達申請を送る <Send size={17} /></button><p className="modal-note">知っている人から直接聞いたコードだけを使ってね。</p></Modal>}
-      {modal === 'poke' && pokeTarget && <Modal title={`${pokeTarget.displayName}さんにPoke`} onClose={() => setModal(null)}><div className="poke-options">{POKE_OPTIONS.map((option) => <button key={option.kind} onClick={() => sendPoke(option.kind)} disabled={busy}><span>{option.emoji}</span><strong>{option.label}</strong></button>)}</div></Modal>}
-      {modal === 'notifications' && <Modal title="お知らせ" onClose={() => setModal(null)}><div className="notification-list">{requests.map((request) => <article className="inbox-card" key={request.id}><Avatar config={request.fromAvatar} size="small" /><div><strong>{request.fromName}</strong><p>友達になりたいみたい</p></div><button className="accept-button" disabled={busy} onClick={() => respondToRequest(request, true)}><Check size={17} /></button><button className="decline-button" disabled={busy} onClick={() => respondToRequest(request, false)}><X size={17} /></button></article>)}{pokes.map((poke) => { const detail = pokeLabel(poke.kind); return <button className={`poke-inbox-card ${poke.readAt ? '' : 'is-unread'}`} key={poke.id} onClick={() => !poke.readAt && updateDoc(doc(db, 'pokes', poke.id), { readAt: Date.now() })}><span className="poke-inbox-card__emoji">{detail.emoji}</span><div><strong>{poke.fromName}</strong><p>「{detail.label}」</p></div></button> })}{!requests.length && !pokes.length && <Empty emoji="🔔" title="お知らせはありません" body="新しいPokeや友達申請がここに届きます。" />}</div></Modal>}
+      {modal === 'status' && <Modal title="今の状態を決めよう" onClose={() => setModal(null)}><StatusComposer groups={groups} currentStatus={profile.currentStatus} busy={busy} onSubmit={saveStatus} /></Modal>}
+      {modal === 'invite' && <Modal title="友達とつながる" onClose={() => setModal(null)}><div className="my-code-card"><p>あなたの友達コード</p><strong>{profile.friendCode}</strong><div><button onClick={() => copyCode()}><Copy size={16} /> コード</button><button onClick={shareInvite}><Share2 size={16} /> 招待リンク</button></div></div><div className="divider"><span>友達のコードを持っている</span></div><label className="code-input-label">友達コード<input value={friendCode} onChange={(event) => setFriendCode(event.target.value.toUpperCase())} maxLength={6} placeholder="ABC234" /></label><button className="primary-button" disabled={busy || friendCode.length !== 6} onClick={sendRequest}>{busy ? '送信中…' : '友達申請を送る'} {!busy && <Send size={17} />}</button><p className="modal-note">実際に知っている友達から受け取ったコードだけを使ってね。</p></Modal>}
+      {modal === 'poke' && pokeTarget && <Modal title={`${pokeTarget.displayName}さんを誘う`} onClose={() => setModal(null)}><p className="invite-modal-lead">タップすると、すぐ相手のお知らせに届きます。</p><div className="invite-quick-options">{inviteOptions.map((option, index) => <button className={index === 0 ? 'is-recommended' : ''} key={option.value} onClick={() => sendInvite(pokeTarget, option.value)} disabled={busy}><span>{option.emoji}</span><strong>{option.inviteLabel}</strong>{index === 0 && <small>おすすめ</small>}</button>)}</div><form className="custom-invite-form" onSubmit={(event) => { event.preventDefault(); if (inviteMessage.trim()) sendInvite(pokeTarget, undefined, inviteMessage) }}><label>自由に誘う<input value={inviteMessage} onChange={(event) => setInviteMessage(event.target.value)} maxLength={60} placeholder="例：20時から通話しない？" /></label><button disabled={busy || !inviteMessage.trim()} aria-label="自由入力の誘いを送る"><Send size={17} /></button></form></Modal>}
+      {modal === 'notifications' && <Modal title="お知らせ" onClose={() => setModal(null)}><div className="notification-list">{requests.map((request) => <article className="inbox-card" key={request.id}><Avatar config={request.fromAvatar} size="small" /><div><strong>{request.fromName}</strong><p>友達になりたいみたい</p></div><button className="accept-button" disabled={busy} onClick={() => respondToRequest(request, true)} aria-label={`${request.fromName}さんの申請を承認`}><Check size={17} /></button><button className="decline-button" disabled={busy} onClick={() => respondToRequest(request, false)} aria-label={`${request.fromName}さんの申請を断る`}><X size={17} /></button></article>)}{pokes.map((poke) => { const detail = pokeLabel(poke.kind); const activity = activityOption(poke.activity); return <button className={`poke-inbox-card ${poke.readAt ? '' : 'is-unread'}`} key={poke.id} onClick={() => !poke.readAt && updateDoc(doc(db, 'pokes', poke.id), { readAt: Date.now() })}><span className="poke-inbox-card__emoji">{activity?.emoji ?? detail.emoji}</span><div><strong>{poke.fromName}さんからのお誘い</strong><p>「{poke.message ?? detail.label}」</p></div>{!poke.readAt && <i className="unread-dot" aria-label="未読" />}</button> })}{!requests.length && !pokes.length && <Empty emoji="🔔" title="まだお知らせはありません" body="友達からの誘いや友達申請がここに届きます。" />}</div></Modal>}
     </main>
   )
 }

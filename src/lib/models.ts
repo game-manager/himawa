@@ -16,9 +16,15 @@ export type LegacyStatusKind =
 
 export type StatusVisibility = 'friends' | 'followers' | 'public' | 'groups'
 
+export type AvailabilityLevel = 'free' | 'maybe' | 'busy'
+
+export type ActivityKind = 'game' | 'food' | 'outing' | 'talk' | 'sports' | 'study' | 'other'
+
 export type CurrentStatus = {
   text: string
   emoji: string
+  availability?: AvailabilityLevel
+  activities?: ActivityKind[]
   visibility: StatusVisibility
   expiresAt: number
   updatedAt: number
@@ -35,6 +41,7 @@ export type UserProfile = {
   defaultStatusVisibility?: Exclude<StatusVisibility, 'groups'>
   discoverable?: boolean
   bio?: string
+  statusHidden?: boolean
   createdAt?: unknown
 }
 
@@ -70,6 +77,8 @@ export type Poke = {
   fromName: string
   toUid: string
   kind: PokeKind
+  activity?: ActivityKind
+  message?: string
   readAt: number | null
   createdAt?: { toMillis?: () => number }
 }

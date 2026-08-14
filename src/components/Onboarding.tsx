@@ -89,11 +89,11 @@ export function Onboarding({ user }: { user: User }) {
     <main className="onboarding-page">
       <header className="onboarding-header">
         <div className="mini-brand"><span className="mini-brand__dot" /> HIMAWA</div>
-        <span className="step-label">STEP 1 / 1</span>
+        <span className="step-label">30秒で準備完了</span>
       </header>
       <section className="onboarding-card">
-        <p className="eyebrow">きみの分身をつくろう</p>
-        <h1>どんな姿で<br />友達に会う？</h1>
+        <p className="eyebrow">はじめまして</p>
+        <h1>友達に見える<br />自分をつくろう</h1>
         <div className="avatar-preview">
           <Avatar config={avatar} size="large" status="🌻" />
           <button className="shuffle-button" type="button" onClick={() => setAvatar(randomAvatar())} aria-label="アバターをランダムに変更">
@@ -102,6 +102,7 @@ export function Onboarding({ user }: { user: User }) {
         </div>
 
         <div className="onboarding-customizer">
+          <div className="onboarding-value"><span>1</span><p><strong>名前とアイコンを決める</strong><small>次のホームで友達追加と「ひま！」をすぐ試せます。</small></p></div>
           <div className="avatar-options">
             {avatarChoices.map((choice) => (
               <div className="avatar-option-row" key={choice.key}>
@@ -130,7 +131,7 @@ export function Onboarding({ user }: { user: User }) {
             </label>
             {error && <p className="form-error" role="alert">{error}</p>}
             <button className="primary-button" type="submit" disabled={saving}>
-              {saving ? '保存中…' : 'これでスタート'} {!saving && <ArrowRight size={18} />}
+              {saving ? '準備中…' : 'ホームへ進む'} {!saving && <ArrowRight size={18} />}
             </button>
           </form>
         </div>
