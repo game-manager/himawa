@@ -130,6 +130,22 @@ describe('HIMAWA Firestore rules', () => {
     }))
   })
 
+  it('accepts only sanitized Spotify tracks on a status', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    const baseStatus = {
+      uid: 'alice', displayName: 'ありす', avatar, text: 'この曲きいてる', emoji: '🟢',
+      visibility: 'friends', expiresAt: Date.now() + 60_000, updatedAt: Date.now(),
+    }
+    const music = {
+      provider: 'spotify', trackId: '11dFghVXANMlKmJXsNCbNl',
+      url: 'https://open.spotify.com/track/11dFghVXANMlKmJXsNCbNl', title: 'Cut To The Feeling',
+      thumbnailUrl: 'https://image-cdn-ak.spotifycdn.com/image/example',
+    }
+
+    await assertSucceeds(setDoc(doc(alice, 'statusShares', 'alice'), { ...baseStatus, music }))
+    await assertFails(setDoc(doc(alice, 'statusShares', 'alice'), { ...baseStatus, music: { ...music, url: 'https://evil.example/track' } }))
+  })
+
   it('allows short invitations but rejects oversized invitation text', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const admin = context.firestore()

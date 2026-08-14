@@ -35,10 +35,12 @@ import {
   ChevronRight,
   Compass,
   Copy,
+  ExternalLink,
   Home,
   KeyRound,
   LogOut,
   MessageCircle,
+  Music2,
   Plus,
   Send,
   ShieldCheck,
@@ -59,6 +61,7 @@ import type {
   FriendRequest,
   Group,
   GroupStatus,
+  MusicAttachment,
   Note,
   Poke,
   PokeKind,
@@ -66,6 +69,7 @@ import type {
   StatusShare,
   UserProfile,
 } from '../lib/models'
+import { spotifyEmbedUrl } from '../lib/spotify'
 import {
   ACTIVITY_OPTIONS,
   activityOption,
@@ -81,7 +85,7 @@ import { FriendStatusCard, type FriendStatusView } from './FriendStatusCard'
 import { StatusComposer } from './StatusComposer'
 
 type Tab = 'home' | 'friends' | 'square' | 'dm' | 'groups' | 'settings'
-type ModalKind = 'status' | 'invite' | 'poke' | 'notifications' | null
+type ModalKind = 'status' | 'invite' | 'poke' | 'notifications' | 'music' | null
 type FriendView = FriendStatusView
 
 function timeOf(value?: { toMillis?: () => number }) {
@@ -336,6 +340,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
   const [messages, setMessages] = useState<DirectMessage[]>([])
   const [groups, setGroups] = useState<Group[]>([])
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null)
+  const [selectedMusic, setSelectedMusic] = useState<MusicAttachment | null>(null)
   const [groupStatuses, setGroupStatuses] = useState<GroupStatus[]>([])
   const [modal, setModal] = useState<ModalKind>(null)
   const [pokeTarget, setPokeTarget] = useState<PublicProfile | null>(null)
@@ -529,12 +534,13 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
     return onSnapshot(collection(db, 'groups', selectedGroup.id, 'statuses'), (snapshot) => setGroupStatuses(snapshot.docs.map((item) => item.data() as GroupStatus).filter((item) => item.expiresAt > Date.now()).sort((a, b) => b.updatedAt - a.updatedAt)))
   }, [selectedGroup])
 
-  async function saveStatus(value: { availability: 'free' | 'maybe' | 'busy'; activities: ActivityKind[]; note: string; visibility: 'friends' | 'groups'; expiresAt: number; groupIds: string[] }) {
+  async function saveStatus(value: { availability: 'free' | 'maybe' | 'busy'; activities: ActivityKind[]; note: string; visibility: 'friends' | 'groups'; expiresAt: number; groupIds: string[]; music?: MusicAttachment }) {
     if (coreActionLock.current) return
     coreActionLock.current = true
     setBusy(true)
     try {
-      const status = createAvailabilityStatus(value.availability, value.activities, value.note, value.visibility, value.expiresAt, value.groupIds)
+      const baseStatus = createAvailabilityStatus(value.availability, value.activities, value.note, value.visibility, value.expiresAt, value.groupIds)
+      const status = { ...baseStatus, ...(value.music ? { music: value.music } : {}) }
       const batch = writeBatch(db)
       batch.set(doc(db, 'users', user.uid), { currentStatus: status, statusHidden: false, ...(value.visibility !== 'groups' ? { defaultStatusVisibility: 'friends' } : {}) }, { merge: true })
       groups.forEach((group) => batch.delete(doc(db, 'groups', group.id, 'statuses', user.uid)))
@@ -849,6 +855,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
       onInvite={(activity) => sendInvite(friend.profile, activity)}
       onInviteOptions={() => { setPokeTarget(friend.profile); setModal('poke') }}
       onMessage={() => openConversation(friend.profile)}
+      onMusic={(music) => { setSelectedMusic(music); setModal('music') }}
     />
   }
 
@@ -871,6 +878,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
               </div>
             </div>
             {ownActivities.length > 0 && <div className="own-activity-list">{ownActivities.map((item) => <span key={item.value}>{item.emoji} {item.statusLabel}</span>)}</div>}
+            {ownStatus?.music && <button className="own-music-chip" onClick={() => { setSelectedMusic(ownStatus.music!); setModal('music') }}><Music2 size={14} /><span>{ownStatus.music.title}</span></button>}
             <div className="quick-status-card__actions">
               <button className="hima-cta" onClick={ownStatus && ownAvailability === 'free' && !profile.statusHidden ? () => setModal('status') : quickSetFree} disabled={busy}>{busy ? '更新中…' : '🌻 ひま！'}</button>
               <button className="status-detail-button" onClick={() => setModal('status')}>くわしく設定 <ChevronRight size={16} /></button>
@@ -909,6 +917,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
       {modal === 'invite' && <Modal title="友達とつながる" onClose={() => setModal(null)}><div className="my-code-card"><p>あなたの友達コード</p><strong>{profile.friendCode}</strong><div><button onClick={() => copyCode()}><Copy size={16} /> コード</button><button onClick={shareInvite}><Share2 size={16} /> 招待リンク</button></div></div><div className="divider"><span>友達のコードを持っている</span></div><label className="code-input-label">友達コード<input value={friendCode} onChange={(event) => setFriendCode(event.target.value.toUpperCase())} maxLength={6} placeholder="ABC234" /></label><button className="primary-button" disabled={busy || friendCode.length !== 6} onClick={sendRequest}>{busy ? '送信中…' : '友達申請を送る'} {!busy && <Send size={17} />}</button><p className="modal-note">実際に知っている友達から受け取ったコードだけを使ってね。</p></Modal>}
       {modal === 'poke' && pokeTarget && <Modal title={`${pokeTarget.displayName}さんを誘う`} onClose={() => setModal(null)}><p className="invite-modal-lead">タップすると、すぐ相手のお知らせに届きます。</p><div className="invite-quick-options">{inviteOptions.map((option, index) => <button className={index === 0 ? 'is-recommended' : ''} key={option.value} onClick={() => sendInvite(pokeTarget, option.value)} disabled={busy}><span>{option.emoji}</span><strong>{option.inviteLabel}</strong>{index === 0 && <small>おすすめ</small>}</button>)}</div><form className="custom-invite-form" onSubmit={(event) => { event.preventDefault(); if (inviteMessage.trim()) sendInvite(pokeTarget, undefined, inviteMessage) }}><label>自由に誘う<input value={inviteMessage} onChange={(event) => setInviteMessage(event.target.value)} maxLength={60} placeholder="例：20時から通話しない？" /></label><button disabled={busy || !inviteMessage.trim()} aria-label="自由入力の誘いを送る"><Send size={17} /></button></form></Modal>}
       {modal === 'notifications' && <Modal title="お知らせ" onClose={() => setModal(null)}><div className="notification-list">{requests.map((request) => <article className="inbox-card" key={request.id}><Avatar config={request.fromAvatar} size="small" /><div><strong>{request.fromName}</strong><p>友達になりたいみたい</p></div><button className="accept-button" disabled={busy} onClick={() => respondToRequest(request, true)} aria-label={`${request.fromName}さんの申請を承認`}><Check size={17} /></button><button className="decline-button" disabled={busy} onClick={() => respondToRequest(request, false)} aria-label={`${request.fromName}さんの申請を断る`}><X size={17} /></button></article>)}{pokes.map((poke) => { const detail = pokeLabel(poke.kind); const activity = activityOption(poke.activity); return <button className={`poke-inbox-card ${poke.readAt ? '' : 'is-unread'}`} key={poke.id} onClick={() => !poke.readAt && updateDoc(doc(db, 'pokes', poke.id), { readAt: Date.now() })}><span className="poke-inbox-card__emoji">{activity?.emoji ?? detail.emoji}</span><div><strong>{poke.fromName}さんからのお誘い</strong><p>「{poke.message ?? detail.label}」</p></div>{!poke.readAt && <i className="unread-dot" aria-label="未読" />}</button> })}{!requests.length && !pokes.length && <Empty emoji="🔔" title="まだお知らせはありません" body="友達からの誘いや友達申請がここに届きます。" />}</div></Modal>}
+      {modal === 'music' && selectedMusic && <Modal title="ステータスの音楽" onClose={() => { setModal(null); setSelectedMusic(null) }}><div className="spotify-player"><div className="spotify-player__title">{selectedMusic.thumbnailUrl ? <img src={selectedMusic.thumbnailUrl} alt="" /> : <span><Music2 size={22} /></span>}<div><strong>{selectedMusic.title}</strong><small>Spotify</small></div></div><iframe src={spotifyEmbedUrl(selectedMusic.trackId)} title={`${selectedMusic.title}のSpotifyプレイヤー`} width="100%" height="152" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" /><a href={selectedMusic.url} target="_blank" rel="noopener noreferrer">Spotifyで開く <ExternalLink size={14} /></a></div></Modal>}
       {showPushPrompt && <NotificationPermissionPrompt busy={pushPromptBusy} onAnswer={answerPushPrompt} />}
     </main>
   )

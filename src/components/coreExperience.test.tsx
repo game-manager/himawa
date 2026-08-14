@@ -30,6 +30,10 @@ describe('HIMAWA core experience', () => {
           visibility: 'friends',
           updatedAt: now,
           expiresAt: now + 42 * 60_000,
+          music: {
+            provider: 'spotify', trackId: '11dFghVXANMlKmJXsNCbNl',
+            url: 'https://open.spotify.com/track/11dFghVXANMlKmJXsNCbNl', title: 'Cut To The Feeling',
+          },
         },
       }}
       now={now}
@@ -42,6 +46,7 @@ describe('HIMAWA core experience', () => {
     expect(html).toContain('ゲームしたい')
     expect(html).toContain('あと42分')
     expect(html).toContain('ゲームしよ')
+    expect(html).toContain('Cut To The Feeling')
   })
 
   it('treats an expired status as unavailable and disables invitations', () => {
@@ -83,6 +88,7 @@ describe('HIMAWA core experience', () => {
     expect(html).toContain('1時間')
     expect(html).toContain('3時間')
     expect(html).toContain('今日いっぱい')
+    expect(html).toContain('Spotifyの曲リンクを貼る')
   })
 
   it('explains notification scope and where the choice can be changed later', () => {

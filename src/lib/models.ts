@@ -20,6 +20,14 @@ export type AvailabilityLevel = 'free' | 'maybe' | 'busy'
 
 export type ActivityKind = 'game' | 'food' | 'outing' | 'talk' | 'sports' | 'study' | 'other'
 
+export type MusicAttachment = {
+  provider: 'spotify'
+  trackId: string
+  url: string
+  title: string
+  thumbnailUrl?: string
+}
+
 export type CurrentStatus = {
   text: string
   emoji: string
@@ -29,6 +37,7 @@ export type CurrentStatus = {
   expiresAt: number
   updatedAt: number
   groupIds?: string[]
+  music?: MusicAttachment
   kind?: LegacyStatusKind
 }
 

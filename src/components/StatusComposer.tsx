@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Check, Eye, Send } from 'lucide-react'
-import type { ActivityKind, AvailabilityLevel, CurrentStatus, Group } from '../lib/models'
+import { Check, Eye, LoaderCircle, Music2, Send, Trash2 } from 'lucide-react'
+import type { ActivityKind, AvailabilityLevel, CurrentStatus, Group, MusicAttachment } from '../lib/models'
+import { fetchSpotifyTrack } from '../lib/spotify'
 import {
   ACTIVITY_OPTIONS,
   AVAILABILITY_OPTIONS,
@@ -19,6 +20,7 @@ type StatusDraft = {
   visibility: 'friends' | 'groups'
   expiresAt: number
   groupIds: string[]
+  music?: MusicAttachment
 }
 
 export function StatusComposer({
@@ -39,6 +41,10 @@ export function StatusComposer({
   const [duration, setDuration] = useState<StatusDurationKey>('60')
   const [visibility, setVisibility] = useState<'friends' | 'groups'>(current?.visibility === 'groups' ? 'groups' : 'friends')
   const [groupIds, setGroupIds] = useState<string[]>(current?.groupIds ?? [])
+  const [music, setMusic] = useState<MusicAttachment | undefined>(current?.music)
+  const [musicUrl, setMusicUrl] = useState(current?.music?.url ?? '')
+  const [musicLoading, setMusicLoading] = useState(false)
+  const [musicError, setMusicError] = useState('')
 
   function toggleActivity(value: ActivityKind) {
     setActivities((currentItems) => {
@@ -48,10 +54,25 @@ export function StatusComposer({
     })
   }
 
+  async function addMusic() {
+    if (musicLoading) return
+    setMusicLoading(true)
+    setMusicError('')
+    try {
+      const track = await fetchSpotifyTrack(musicUrl)
+      setMusic(track)
+      setMusicUrl(track.url)
+    } catch (error) {
+      setMusicError(error instanceof Error && error.message === 'SPOTIFY_URL_INVALID' ? 'Spotifyの曲リンクを貼ってください' : '曲を読み込めませんでした。リンクを確認してね')
+    } finally {
+      setMusicLoading(false)
+    }
+  }
+
   return (
     <form className="status-composer" onSubmit={(event) => {
       event.preventDefault()
-      onSubmit({ availability, activities, note, visibility, expiresAt: getStatusExpiry(duration), groupIds })
+      onSubmit({ availability, activities, note, visibility, expiresAt: getStatusExpiry(duration), groupIds, music })
     }}>
       <fieldset className="status-fieldset">
         <legend>今、誘ってもいい？</legend>
@@ -93,6 +114,21 @@ export function StatusComposer({
 
       <label className="status-note-label">ひとこと <small>任意</small><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={60} placeholder="例：21時までゲームできる！" /></label>
 
+      <fieldset className="status-fieldset status-music-fieldset">
+        <legend>今聴いている曲 <small>任意・1曲まで</small></legend>
+        {music ? <div className="music-attachment-preview">
+          {music.thumbnailUrl ? <img src={music.thumbnailUrl} alt="" /> : <span aria-hidden="true"><Music2 size={20} /></span>}
+          <div><strong>{music.title}</strong><small>Spotify</small></div>
+          <button type="button" onClick={() => { setMusic(undefined); setMusicUrl(''); setMusicError('') }} aria-label={`${music.title}をステータスから外す`}><Trash2 size={16} /></button>
+        </div> : <div className="music-link-input">
+          <Music2 size={18} aria-hidden="true" />
+          <input value={musicUrl} onChange={(event) => setMusicUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void addMusic() } }} inputMode="url" autoCapitalize="none" autoCorrect="off" placeholder="Spotifyの曲リンクを貼る" aria-label="Spotifyの曲リンク" />
+          <button type="button" onClick={addMusic} disabled={musicLoading || !musicUrl.trim()}>{musicLoading ? <LoaderCircle className="spin" size={16} /> : '追加'}</button>
+        </div>}
+        {musicError && <p className="music-link-error" role="alert">{musicError}</p>}
+        <p className="music-link-hint">Spotifyの「シェア」から曲のリンクをコピーして貼り付けてね。</p>
+      </fieldset>
+
       {groups.length > 0 && <details className="status-sharing-details">
         <summary><Eye size={15} /> 公開先：{VISIBILITY_LABELS[visibility].label}</summary>
         <div className="sharing-options">
@@ -103,7 +139,7 @@ export function StatusComposer({
       </details>}
 
       <p className="privacy-hint"><Eye size={14} /> {VISIBILITY_LABELS[visibility].description}。期限が来ると自動で「今は無理」に戻ります。</p>
-      <button className="primary-button status-submit-button" type="submit" disabled={busy || (visibility === 'groups' && groupIds.length === 0)}>{busy ? '更新中…' : availability === 'free' ? 'ひまになる 🌻' : 'この状態にする'} {!busy && <Send size={17} />}</button>
+      <button className="primary-button status-submit-button" type="submit" disabled={busy || musicLoading || (visibility === 'groups' && groupIds.length === 0)}>{busy ? '更新中…' : availability === 'free' ? 'ひまになる 🌻' : 'この状態にする'} {!busy && <Send size={17} />}</button>
     </form>
   )
 }

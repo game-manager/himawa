@@ -1,5 +1,5 @@
-import { Clock3, MessageCircle, MoreHorizontal, Send } from 'lucide-react'
-import type { ActivityKind, PublicProfile, StatusShare } from '../lib/models'
+import { Clock3, MessageCircle, MoreHorizontal, Music2, Send } from 'lucide-react'
+import type { ActivityKind, MusicAttachment, PublicProfile, StatusShare } from '../lib/models'
 import { activityOption, availabilityOption, getAvailability, getRemainingLabel, getUpdatedLabel, normalizeStatus } from '../lib/status'
 import { Avatar } from './Avatar'
 
@@ -11,12 +11,14 @@ export function FriendStatusCard({
   onInvite,
   onInviteOptions,
   onMessage,
+  onMusic,
 }: {
   friend: FriendStatusView
   now: number
   onInvite: (activity?: ActivityKind) => void
   onInviteOptions: () => void
   onMessage: () => void
+  onMusic?: (music: MusicAttachment) => void
 }) {
   const status = normalizeStatus(friend.status, now)
   const availability = getAvailability(status)
@@ -34,6 +36,10 @@ export function FriendStatusCard({
         <header><h3 title={friend.profile.displayName}>{friend.profile.displayName}</h3><span className={`availability-badge availability-badge--${availability}`}><i aria-hidden="true" />{availabilityMeta.shortLabel}</span></header>
         {activities.length > 0 ? <div className="friend-activities">{activities.map((item) => <span key={item.value}>{item.emoji} {item.statusLabel}</span>)}</div> : <p className="friend-no-activity">{canInvite ? '何するかは誘ってから決めよう' : '今は誘わないでほしいみたい'}</p>}
         {note && <p className="friend-status-note">「{note}」</p>}
+        {status?.music && <button type="button" className="friend-music-chip" onClick={() => onMusic?.(status.music!)} aria-label={`${status.music.title}をSpotifyで試聴`}>
+          {status.music.thumbnailUrl ? <img src={status.music.thumbnailUrl} alt="" /> : <span aria-hidden="true"><Music2 size={13} /></span>}
+          <strong>{status.music.title}</strong><Music2 size={12} aria-hidden="true" />
+        </button>}
         <div className="friend-status-meta"><span><Clock3 size={13} />{getRemainingLabel(status, now)}</span>{status && <span>{getUpdatedLabel(status, now)}</span>}</div>
       </div>
       <div className="friend-status-card__actions">

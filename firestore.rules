@@ -37,6 +37,23 @@ service cloud.firestore {
         && avatar.skin is string && avatar.hair is string
         && avatar.outfit is string && avatar.background is string;
     }
+    function validMusic(data) {
+      return !('music' in data) || (
+        data.music is map
+        && data.music.keys().hasOnly(['provider', 'trackId', 'url', 'title', 'thumbnailUrl'])
+        && data.music.provider == 'spotify'
+        && data.music.trackId is string
+        && data.music.trackId.matches('^[A-Za-z0-9]{22}$')
+        && data.music.url == 'https://open.spotify.com/track/' + data.music.trackId
+        && data.music.title is string
+        && data.music.title.size() >= 1
+        && data.music.title.size() <= 100
+        && (!('thumbnailUrl' in data.music) || (
+          data.music.thumbnailUrl is string
+          && data.music.thumbnailUrl.matches('^https://[A-Za-z0-9.-]+\\.(spotifycdn\\.com|scdn\\.co)/.*$')
+        ))
+      );
+    }
     function validProfile(uid) {
       return request.resource.data.keys().hasOnly([
           'uid', 'displayName', 'friendCode', 'avatar', 'currentStatus', 'defaultStatusVisibility',
@@ -131,7 +148,8 @@ service cloud.firestore {
           request.resource.data.activities is list
           && request.resource.data.activities.size() <= 2
           && request.resource.data.activities.hasOnly(['game', 'food', 'outing', 'talk', 'sports', 'study', 'other'])
-        ));
+        ))
+        && validMusic(request.resource.data);
       allow delete: if isOwner(uid);
     }
 
@@ -263,7 +281,8 @@ service cloud.firestore {
           && request.resource.data.text is string
           && request.resource.data.text.size() >= 1
           && request.resource.data.text.size() <= 60
-          && request.resource.data.expiresAt is number;
+          && request.resource.data.expiresAt is number
+          && validMusic(request.resource.data);
         allow delete: if isGroupMember(groupId) && statusUid == request.auth.uid;
       }
     }
