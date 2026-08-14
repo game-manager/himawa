@@ -580,10 +580,30 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
   async function openConversation(friend: PublicProfile) {
     if (busy) return
     const id = [user.uid, friend.uid].sort().join('_')
-    const conversation: Conversation = { id, participants: [user.uid, friend.uid], participantNames: { [user.uid]: profile.displayName, [friend.uid]: friend.displayName }, participantAvatars: { [user.uid]: profile.avatar, [friend.uid]: friend.avatar }, lastMessage: '' }
+    const conversationRef = doc(db, 'conversations', id)
     setBusy(true)
     try {
-      await setDoc(doc(db, 'conversations', id), { ...conversation, updatedAt: serverTimestamp() }, { merge: true })
+      const existing = await getDoc(conversationRef)
+      let conversation: Conversation
+      if (existing.exists()) {
+        const stored = existing.data() as Omit<Conversation, 'id'>
+        if (!stored.participants.includes(friend.uid)) throw new Error('INVALID_CONVERSATION')
+        conversation = {
+          ...stored,
+          id,
+          participantNames: { ...stored.participantNames, [user.uid]: profile.displayName, [friend.uid]: friend.displayName },
+          participantAvatars: { ...stored.participantAvatars, [user.uid]: profile.avatar, [friend.uid]: friend.avatar },
+        }
+      } else {
+        conversation = {
+          id,
+          participants: [user.uid, friend.uid].sort(),
+          participantNames: { [user.uid]: profile.displayName, [friend.uid]: friend.displayName },
+          participantAvatars: { [user.uid]: profile.avatar, [friend.uid]: friend.avatar },
+          lastMessage: '',
+        }
+        await setDoc(conversationRef, { ...conversation, updatedAt: serverTimestamp() })
+      }
       setSelectedConversation(conversation)
       setDmError(false)
       setTab('dm')

@@ -142,13 +142,20 @@ describe('HIMAWA Firestore rules', () => {
       await setDoc(doc(admin, 'users', 'alice', 'friends', 'bob'), { uid: 'bob', requestId: 'request-1' })
       await setDoc(doc(admin, 'users', 'bob', 'friends', 'alice'), { uid: 'alice', requestId: 'request-1' })
       await setDoc(doc(admin, 'conversations', 'alice_bob'), {
-        participants: ['alice', 'bob'], participantNames: { alice: 'ありす', bob: 'ぼぶ' },
+        participants: ['bob', 'alice'], participantNames: { alice: 'ありす', bob: 'ぼぶ' },
         participantAvatars: { alice: avatar, bob: avatar }, lastMessage: '', updatedAt: new Date(),
       })
     })
 
     const bob = testEnv.authenticatedContext('bob').firestore()
+    const alice = testEnv.authenticatedContext('alice').firestore()
     const mallory = testEnv.authenticatedContext('mallory').firestore()
+    // Opening an existing conversation must not rewrite the participant order.
+    await assertSucceeds(getDoc(doc(alice, 'conversations', 'alice_bob')))
+    await assertFails(setDoc(doc(alice, 'conversations', 'alice_bob'), {
+      participants: ['alice', 'bob'], participantNames: { alice: 'ありす', bob: 'ぼぶ' },
+      participantAvatars: { alice: avatar, bob: avatar }, lastMessage: '', updatedAt: serverTimestamp(),
+    }, { merge: true }))
     await assertSucceeds(getDoc(doc(bob, 'conversations', 'alice_bob')))
     await assertSucceeds(getDocs(query(collection(bob, 'conversations'), where('participants', 'array-contains', 'bob'))))
     await assertFails(getDoc(doc(mallory, 'conversations', 'alice_bob')))
