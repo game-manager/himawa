@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "himawa-push",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "FIREBASE_API_KEY": "AIzaSyA09CgPDfd8mCq_ZKxi2W9vxPgm705munM",
+    "FIREBASE_PROJECT_ID": "himawa-social-2026",
+    "ALLOWED_ORIGINS": "https://himawa-social-2026.web.app,https://game-manager.github.io,http://127.0.0.1:5173,http://localhost:5173",
+    "APP_URL": "https://himawa-social-2026.web.app/",
+    "VAPID_SUBJECT": "mailto:lightnozomu@gmail.com"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "PUSH_USERS", "class_name": "PushUser" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["PushUser"] }
+  ],
+  "observability": { "enabled": true }
+}

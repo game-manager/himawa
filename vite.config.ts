@@ -7,6 +7,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
@@ -28,8 +31,7 @@ export default defineConfig({
           }
         ]
       },
-      workbox: {
-        navigateFallback: '/index.html',
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png}']
       }
     })

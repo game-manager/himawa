@@ -16,6 +16,8 @@ test-results/
 # Codex local artifacts
 outputs/
 work/
+.wrangler/
+.dev.vars*
 
 # Operating system files
 .DS_Store

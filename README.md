@@ -27,6 +27,7 @@ Firebase Hosting版：https://himawa-social-2026.web.app
 - 招待コード制グループとグループ限定ステータス
 - 友達解除、ブロック、通報、退会
 - ホーム画面へ追加できるPWA
+- PWAの端末通知（DM・誘い・友達申請）
 
 ### ステータス
 
@@ -60,6 +61,7 @@ Web版では、ホーム画面のPWAアイコンから友達ボードを直接�
 - Firebase Authentication
 - Cloud Firestore + Security Rules
 - Firebase Hosting
+- Cloudflare Workers + Web Push（無料枠）
 - GitHub Actions
 
 無料枠を利用し、MVPの追加運用費を0円に抑える方針です。
@@ -99,6 +101,7 @@ Web版では、ホーム画面のPWAアイコンから友達ボードを直接�
 - [x] PC・スマートフォン対応の4項目ナビゲーション
 - [x] 管理画面（通報、利用停止、広場、グループ、監査ログ）
 - [x] ブロック・通報・退会
+- [x] DM・誘い・友達申請の端末通知
 - [ ] クローズドベータ
 
 ## 初期ロードマップ
@@ -123,10 +126,14 @@ npm run dev
 ```bash
 npm run build
 npm test
+npm run test:worker
+npm run worker:check
 firebase emulators:exec --only firestore --project himawa-rules-test "npm run test:rules"
 ```
 
 Firebaseの接続先は無料Sparkプランの `himawa-social-2026` です。Firestoreルールは、友達以外のプロフィール閲覧、コード一覧取得、ブロック後の閲覧を拒否します。
+
+端末通知は標準のWeb Pushを使用し、送信処理だけをCloudflare Workers無料枠で動かします。通知は設定画面で明示的にオンにした端末へだけ届き、DM本文はロック画面に表示しません。Firebase Cloud FunctionsやBlazeプランは使用しません。
 
 ## 管理画面
 

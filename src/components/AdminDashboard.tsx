@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { User } from 'firebase/auth'
-import { signOut } from 'firebase/auth'
+import { signOut as firebaseSignOut } from 'firebase/auth'
 import { collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { ArrowLeft, Ban, CheckCircle2, FileWarning, KeyRound, LayoutDashboard, LogOut, MessageSquareText, Search, ShieldCheck, UserPlus, Users, UsersRound } from 'lucide-react'
 import { auth, db } from '../lib/firebase'
+import { disablePushNotifications } from '../lib/pushNotifications'
 import type { Group, ModerationAction, ModerationState, Note, PublicProfile, Report, UserProfile } from '../lib/models'
 import { Avatar } from './Avatar'
 
@@ -27,6 +28,11 @@ export function AdminDashboard({ user, profile }: { user: User; profile: UserPro
   const [admins, setAdmins] = useState<AdminRecord[]>([])
   const [search, setSearch] = useState('')
   const [notice, setNotice] = useState('')
+
+  async function signOut(instance = auth) {
+    await disablePushNotifications(user).catch(() => undefined)
+    await firebaseSignOut(instance)
+  }
 
   useEffect(() => onSnapshot(collection(db, 'publicProfiles'), (snapshot) => setProfiles(snapshot.docs.map((item) => item.data() as PublicProfile))), [])
   useEffect(() => onSnapshot(collection(db, 'notes'), (snapshot) => setNotes(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Note).sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt)))), [])

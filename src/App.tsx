@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { User } from 'firebase/auth'
-import { onAuthStateChanged, reload, signOut } from 'firebase/auth'
+import { onAuthStateChanged, reload, signOut as firebaseSignOut } from 'firebase/auth'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { auth, db } from './lib/firebase'
+import { disablePushNotifications } from './lib/pushNotifications'
 import type { UserProfile } from './lib/models'
 import type { ModerationState } from './lib/models'
 import { AdminDashboard } from './components/AdminDashboard'
@@ -19,6 +20,11 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [moderation, setModeration] = useState<ModerationState | null>(null)
   const [route, setRoute] = useState(window.location.hash)
+
+  async function signOut(instance = auth) {
+    if (user) await disablePushNotifications(user).catch(() => undefined)
+    await firebaseSignOut(instance)
+  }
 
   useEffect(() => {
     const updateRoute = () => setRoute(window.location.hash)

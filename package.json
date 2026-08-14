@@ -9,23 +9,34 @@
     "preview": "vite preview",
     "test": "vitest run src",
     "test:rules": "vitest run tests/firestore.rules.test.ts",
+    "test:worker": "vitest run worker",
     "test:watch": "vitest",
-    "firebase:deploy": "npm run build && firebase deploy"
+    "firebase:deploy": "npm run build && firebase deploy",
+    "worker:check": "wrangler deploy --dry-run --outdir work/worker-dist",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy"
   },
   "dependencies": {
     "firebase": "^12.1.0",
     "lucide-react": "^0.539.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260814.1",
     "@firebase/rules-unit-testing": "^5.0.1",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
+    "@types/web-push": "^3.6.4",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.3",
     "vite": "^7.1.2",
     "vite-plugin-pwa": "^1.0.2",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "workbox-core": "^7.4.1",
+    "workbox-precaching": "^7.4.1",
+    "workbox-routing": "^7.4.1",
+    "wrangler": "^4.123.0"
   }
 }

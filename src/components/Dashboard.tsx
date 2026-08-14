@@ -9,7 +9,7 @@ import {
   reauthenticateWithCredential,
   reauthenticateWithPopup,
   reload,
-  signOut,
+  signOut as firebaseSignOut,
   updatePassword,
   verifyBeforeUpdateEmail,
 } from 'firebase/auth'
@@ -50,6 +50,7 @@ import {
 } from 'lucide-react'
 import { auth, db } from '../lib/firebase'
 import { getAuthMethodEmails } from '../lib/authMethods'
+import { currentPushState, disablePushNotifications, enablePushNotifications, sendPushEvent, type PushState } from '../lib/pushNotifications'
 import type {
   ActivityKind,
   Conversation,
@@ -322,6 +323,8 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
   const [groupCode, setGroupCode] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
+  const [pushState, setPushState] = useState<PushState>('loading')
+  const [pendingConversationId, setPendingConversationId] = useState('')
   const [now, setNow] = useState(Date.now())
   const coreActionLock = useRef(false)
   const friendSubscriptions = useRef<Map<string, () => void>>(new Map())
@@ -381,12 +384,32 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
   }, [])
 
   useEffect(() => {
-    const inviteCode = new URLSearchParams(window.location.search).get('invite')?.toUpperCase() ?? ''
+    const params = new URLSearchParams(window.location.search)
+    const inviteCode = params.get('invite')?.toUpperCase() ?? ''
     if (inviteCode.length === 6) {
       setFriendCode(inviteCode)
       setModal('invite')
     }
+    if (params.get('open') === 'notifications') setModal('notifications')
+    if (params.get('open') === 'dm') {
+      setTab('dm')
+      setPendingConversationId(params.get('conversation') ?? '')
+    }
   }, [])
+
+  useEffect(() => { currentPushState().then(setPushState).catch(() => setPushState('unsupported')) }, [])
+
+  useEffect(() => {
+    if (!pendingConversationId) return
+    const conversation = conversations.find((item) => item.id === pendingConversationId)
+    if (!conversation) return
+    setSelectedConversation(conversation)
+    setPendingConversationId('')
+    const url = new URL(window.location.href)
+    url.searchParams.delete('open')
+    url.searchParams.delete('conversation')
+    window.history.replaceState({}, '', url)
+  }, [conversations, pendingConversationId])
 
   useEffect(() => {
     if (!profile.currentStatus || profile.currentStatus.expiresAt > now) return
@@ -510,7 +533,9 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
       const target = codeSnapshot.data() as { uid: string; displayName: string }
       if (target.uid === user.uid) throw new Error('SELF')
       if (friendIds.includes(target.uid)) throw new Error('ALREADY')
-      await setDoc(doc(db, 'friendRequests', `${user.uid}_${target.uid}`), { fromUid: user.uid, fromName: profile.displayName, fromAvatar: profile.avatar, toUid: target.uid, status: 'pending', createdAt: serverTimestamp() })
+      const requestId = `${user.uid}_${target.uid}`
+      await setDoc(doc(db, 'friendRequests', requestId), { fromUid: user.uid, fromName: profile.displayName, fromAvatar: profile.avatar, toUid: target.uid, status: 'pending', createdAt: serverTimestamp() })
+      void sendPushEvent(user, { type: 'friend_request', requestId, targetUid: target.uid })
       setFriendCode(''); setModal(null); setNotice(`${target.displayName}さんに申請しました`)
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : ''
@@ -541,7 +566,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
       const activityMeta = activityOption(activity)
       const kind: PokeKind = activityMeta?.pokeKind ?? 'play'
       const message = customMessage?.trim() || activityMeta?.inviteLabel || '遊ぼう'
-      await addDoc(collection(db, 'pokes'), {
+      const pokeRef = await addDoc(collection(db, 'pokes'), {
         fromUid: user.uid,
         fromName: profile.displayName,
         toUid: target.uid,
@@ -551,6 +576,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
         readAt: null,
         createdAt: serverTimestamp(),
       })
+      void sendPushEvent(user, { type: 'invite', pokeId: pokeRef.id, targetUid: target.uid })
       setInviteMessage('')
       setModal(null)
       setNotice(`${target.displayName}さんを「${message}」に誘いました 🌻`)
@@ -618,13 +644,39 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
     if (!selectedConversation || !messageText.trim() || busy) return
     const text = messageText.trim(); setMessageText('')
     setBusy(true)
+    const targetUid = selectedConversation.participants.find((uid) => uid !== user.uid)
+    const messageRef = doc(collection(db, 'conversations', selectedConversation.id, 'messages'))
     const batch = writeBatch(db)
-    batch.set(doc(collection(db, 'conversations', selectedConversation.id, 'messages')), { senderUid: user.uid, text, createdAt: serverTimestamp() })
+    batch.set(messageRef, { senderUid: user.uid, text, createdAt: serverTimestamp() })
     batch.set(doc(db, 'conversations', selectedConversation.id), { lastMessage: text, updatedAt: serverTimestamp() }, { merge: true })
     await batch.commit()
-      .then(() => setDmError(false))
+      .then(() => {
+        setDmError(false)
+        if (targetUid) void sendPushEvent(user, { type: 'dm', conversationId: selectedConversation.id, messageId: messageRef.id, targetUid })
+      })
       .catch(() => { setMessageText(text); setDmError(true); setNotice('メッセージを送れませんでした。友達状態と通信を確認してね') })
       .finally(() => setBusy(false))
+  }
+
+  async function togglePushNotifications() {
+    if (pushState === 'loading' || pushState === 'unconfigured' || pushState === 'unsupported') return
+    setPushState('loading')
+    try {
+      if (await currentPushState() === 'granted') {
+        await disablePushNotifications(user)
+        setPushState('default')
+        setNotice('端末への通知をオフにしました')
+      } else {
+        await enablePushNotifications(user)
+        setPushState('granted')
+        setNotice('端末への通知をオンにしました 🔔')
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      const nextState: PushState = await currentPushState().catch((): PushState => 'unsupported')
+      setPushState(nextState)
+      setNotice(message === 'PUSH_DENIED' ? '端末の設定でHIMAWAの通知を許可してください' : '通知を設定できませんでした。もう一度試してね')
+    }
   }
 
   async function createGroup(event: FormEvent) {
@@ -696,8 +748,13 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
 
   async function deleteAccount() {
     if (!window.confirm('アカウントを削除します。この操作は取り消せません。')) return
-    try { await deleteDoc(doc(db, 'codes', profile.friendCode)); await deleteDoc(doc(db, 'publicProfiles', user.uid)); await deleteDoc(doc(db, 'users', user.uid)); await deleteUser(user) }
+    try { await disablePushNotifications(user); await deleteDoc(doc(db, 'codes', profile.friendCode)); await deleteDoc(doc(db, 'publicProfiles', user.uid)); await deleteDoc(doc(db, 'users', user.uid)); await deleteUser(user) }
     catch { setNotice('再ログイン後にもう一度お試しください') }
+  }
+
+  async function signOut(instance = auth) {
+    await disablePushNotifications(user).catch(() => undefined)
+    await firebaseSignOut(instance)
   }
 
   const activeConversationFriend = selectedConversation ? {
@@ -779,7 +836,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
 
         {tab === 'groups' && <section className="page-section groups-page"><div className="page-title"><div><p className="section-kicker">CIRCLES</p><h1>グループ</h1><p>友達でなくても、招待された仲間と気配を共有できます。</p></div><button className="soft-button" onClick={() => setModal('status')}><Plus size={17} /> 気配を共有</button></div><div className="group-tools"><form onSubmit={createGroup}><h2>グループを作る</h2><input value={groupName} onChange={(event) => setGroupName(event.target.value)} maxLength={20} placeholder="例：2年3組 放課後組" /><button disabled={busy || groupName.trim().length < 2}>作る</button></form><form onSubmit={joinGroup}><h2>招待コードで参加</h2><input value={groupCode} onChange={(event) => setGroupCode(event.target.value.toUpperCase())} maxLength={6} placeholder="ABC234" /><button disabled={busy || groupCode.length !== 6}>参加</button></form></div><div className="group-layout"><aside className="group-list"><h2>参加中</h2>{groups.map((group) => <button key={group.id} className={selectedGroup?.id === group.id ? 'is-active' : ''} onClick={() => setSelectedGroup(group)}><span>🌻</span><div><strong>{group.name}</strong><small>コード {group.inviteCode}</small></div><ChevronRight size={16} /></button>)}{!groups.length && <Empty emoji="👋" title="グループはまだありません" body="作るか、招待コードで参加しよう。" />}</aside><div className="group-detail">{selectedGroup ? <><header><div><h2>{selectedGroup.name}</h2><p>友達関係に関係なく、この中だけで見えます。</p></div><button onClick={() => copyCode(selectedGroup.inviteCode)}><Copy size={15} /> {selectedGroup.inviteCode}</button></header><div className="group-status-grid">{groupStatuses.length ? groupStatuses.map((status) => <article key={status.uid}><Avatar config={status.avatar} size="small" status={status.emoji} /><div><strong>{status.displayName}</strong><p>{status.emoji} {status.text}</p><small>{getRemainingLabel(status)}</small></div></article>) : <Empty emoji="🌙" title="いまは静かです" body="右上のボタンから、このグループだけに気配を共有できます。" />}</div></> : <Empty emoji="🌻" title="グループを選んでください" body="招待制の小さな居場所です。" />}</div></div></section>}
 
-        {tab === 'settings' && <section className="page-section settings-page"><p className="section-kicker">YOU</p><h1>自分</h1><div className="profile-summary"><Avatar config={profile.avatar} size="medium" /><div><strong>{profile.displayName}</strong><p>{followerCount} フォロワー</p><button onClick={() => copyCode()}>{profile.friendCode} <Copy size={14} /></button></div></div><h2 className="subheading">アカウント</h2><AccountSettings user={user} onNotice={(message) => { setNotice(message); window.setTimeout(() => setNotice(''), 6000) }} />{isAdmin && <button className="admin-entry-button" onClick={() => { window.location.hash = 'admin'; window.location.reload() }}><ShieldCheck size={20} /><div><strong>管理画面を開く</strong><span>通報・ユーザー・広場を管理</span></div><ChevronRight size={18} /></button>}<h2 className="subheading">プライバシー</h2><div className="privacy-settings"><label><div><strong>状態は友達だけに公開</strong><p>相互に友達になった人だけが「ひま！」を見られます。</p></div><ShieldCheck size={21} /></label><label><div><strong>ゴーストモード</strong><p>オンの間は、今の状態を友達から一時的に隠します。</p></div><input type="checkbox" checked={profile.statusHidden ?? false} onChange={(event) => setGhostMode(event.target.checked)} /></label><label><div><strong>広場で見つけられる</strong><p>オフにするとプロフィール検索の対象外になります。</p></div><input type="checkbox" checked={profile.discoverable ?? true} onChange={(event) => updatePrivacy('discoverable', event.target.checked)} /></label></div><div className="safety-card"><ShieldCheck size={24} /><div><strong>安心を優先した設計</strong><p>位置情報は使いません。DMは相互の友達だけ、状態は期限が来ると自動で消えます。</p></div></div>{friends.length > 0 && <><h2 className="subheading">友達の管理</h2><div className="settings-list">{friends.map(({ profile: friend }) => <div className="settings-friend" key={friend.uid}><Avatar config={friend.avatar} size="small" /><strong>{friend.displayName}</strong><button onClick={() => removeFriend(friend)} aria-label={`${friend.displayName}さんを友達から削除`}><UserMinus size={16} /></button><button className="danger-text" onClick={() => removeFriend(friend, true)}>ブロック</button></div>)}</div></>}<div className="settings-actions"><button onClick={() => signOut(auth)}><LogOut size={18} /> ログアウト</button><button className="danger-text" onClick={deleteAccount}>アカウントを削除</button></div></section>}
+        {tab === 'settings' && <section className="page-section settings-page"><p className="section-kicker">YOU</p><h1>自分</h1><div className="profile-summary"><Avatar config={profile.avatar} size="medium" /><div><strong>{profile.displayName}</strong><p>{followerCount} フォロワー</p><button onClick={() => copyCode()}>{profile.friendCode} <Copy size={14} /></button></div></div><h2 className="subheading">アカウント</h2><AccountSettings user={user} onNotice={(message) => { setNotice(message); window.setTimeout(() => setNotice(''), 6000) }} /><h2 className="subheading">通知</h2><button className={`push-settings-card ${pushState === 'granted' ? 'is-enabled' : ''}`} onClick={togglePushNotifications} disabled={pushState === 'loading' || pushState === 'unconfigured' || pushState === 'unsupported'}><Bell size={22} /><div><strong>端末への通知</strong><p>DM・誘い・友達申請だけをお知らせします。</p>{pushState === 'unconfigured' && <small>通知サーバーの公開後に利用できます</small>}{pushState === 'unsupported' && <small>この端末・ブラウザは通知に対応していません</small>}{pushState === 'denied' && <small>端末の設定から通知を許可してください</small>}</div><span>{pushState === 'loading' ? '確認中…' : pushState === 'granted' ? 'オン' : 'オフ'}</span></button>{isAdmin && <button className="admin-entry-button" onClick={() => { window.location.hash = 'admin'; window.location.reload() }}><ShieldCheck size={20} /><div><strong>管理画面を開く</strong><span>通報・ユーザー・広場を管理</span></div><ChevronRight size={18} /></button>}<h2 className="subheading">プライバシー</h2><div className="privacy-settings"><label><div><strong>状態は友達だけに公開</strong><p>相互に友達になった人だけが「ひま！」を見られます。</p></div><ShieldCheck size={21} /></label><label><div><strong>ゴーストモード</strong><p>オンの間は、今の状態を友達から一時的に隠します。</p></div><input type="checkbox" checked={profile.statusHidden ?? false} onChange={(event) => setGhostMode(event.target.checked)} /></label><label><div><strong>広場で見つけられる</strong><p>オフにするとプロフィール検索の対象外になります。</p></div><input type="checkbox" checked={profile.discoverable ?? true} onChange={(event) => updatePrivacy('discoverable', event.target.checked)} /></label></div><div className="safety-card"><ShieldCheck size={24} /><div><strong>安心を優先した設計</strong><p>位置情報は使いません。DMは相互の友達だけ、状態は期限が来ると自動で消えます。</p></div></div>{friends.length > 0 && <><h2 className="subheading">友達の管理</h2><div className="settings-list">{friends.map(({ profile: friend }) => <div className="settings-friend" key={friend.uid}><Avatar config={friend.avatar} size="small" /><strong>{friend.displayName}</strong><button onClick={() => removeFriend(friend)} aria-label={`${friend.displayName}さんを友達から削除`}><UserMinus size={16} /></button><button className="danger-text" onClick={() => removeFriend(friend, true)}>ブロック</button></div>)}</div></>}<div className="settings-actions"><button onClick={() => signOut(auth)}><LogOut size={18} /> ログアウト</button><button className="danger-text" onClick={deleteAccount}>アカウントを削除</button></div></section>}
       </div>
 
       <nav className="bottom-nav" aria-label="メインメニュー"><button className={tab === 'home' ? 'is-active' : ''} onClick={() => setTab('home')}><Home size={21} /><span>ホーム</span></button><button className={tab === 'friends' || tab === 'groups' || tab === 'square' ? 'is-active' : ''} onClick={() => setTab('friends')}><UsersRound size={21} /><span>友達</span></button><button className={tab === 'dm' ? 'is-active' : ''} onClick={() => setTab('dm')}><MessageCircle size={21} /><span>DM</span></button><button className={tab === 'settings' ? 'is-active' : ''} onClick={() => setTab('settings')}><UserRound size={21} /><span>自分</span></button></nav>
