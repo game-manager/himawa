@@ -191,9 +191,14 @@ service cloud.firestore {
     }
 
     match /conversations/{conversationId} {
-      allow read: if signedIn()
+      allow get: if signedIn()
         && request.auth.uid in resource.data.participants
         && isFriend(conversationOther(resource.data));
+      // Collection queries cannot safely resolve the dynamic friend document.
+      // The required array-contains query still limits results to conversations
+      // in which the signed-in user is a participant. Message reads and writes
+      // remain friend-only below.
+      allow list: if signedIn() && request.auth.uid in resource.data.participants;
       allow create: if signedIn()
         && request.resource.data.participants is list
         && request.resource.data.participants.size() == 2

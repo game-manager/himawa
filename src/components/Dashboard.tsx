@@ -306,6 +306,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
   const [following, setFollowing] = useState<Set<string>>(new Set())
   const [followerCount, setFollowerCount] = useState(0)
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [dmError, setDmError] = useState(false)
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<DirectMessage[]>([])
   const [groups, setGroups] = useState<Group[]>([])
@@ -434,7 +435,20 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
   useEffect(() => onSnapshot(collection(db, 'notes'), (snapshot) => setNotes(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Note).filter((item) => item.expiresAt > Date.now()).sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt)).slice(0, 80))), [])
   useEffect(() => onSnapshot(collection(db, 'users', user.uid, 'following'), (snapshot) => setFollowing(new Set(snapshot.docs.map((item) => item.id)))), [user.uid])
   useEffect(() => onSnapshot(collection(db, 'users', user.uid, 'followers'), (snapshot) => setFollowerCount(snapshot.size)), [user.uid])
-  useEffect(() => onSnapshot(query(collection(db, 'conversations'), where('participants', 'array-contains', user.uid)), (snapshot) => setConversations(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Conversation).sort((a, b) => timeOf(b.updatedAt) - timeOf(a.updatedAt)))), [user.uid])
+  useEffect(() => {
+    if (!friendIds.length) { setConversations([]); setDmError(false); return }
+    const currentFriendIds = new Set(friendIds)
+    return onSnapshot(query(collection(db, 'conversations'), where('participants', 'array-contains', user.uid)), (snapshot) => {
+      setConversations(snapshot.docs
+        .map((item) => ({ id: item.id, ...item.data() }) as Conversation)
+        .filter((conversation) => conversation.participants.some((uid) => uid !== user.uid && currentFriendIds.has(uid)))
+        .sort((a, b) => timeOf(b.updatedAt) - timeOf(a.updatedAt)))
+      setDmError(false)
+    }, () => {
+      setConversations([])
+      setDmError(true)
+    })
+  }, [friendIds, user.uid])
 
   useEffect(() => onSnapshot(collection(db, 'users', user.uid, 'groups'), async (snapshot) => {
     const loaded = await Promise.all(snapshot.docs.map(async (item) => {
@@ -446,7 +460,13 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
 
   useEffect(() => {
     if (!selectedConversation) { setMessages([]); return }
-    return onSnapshot(collection(db, 'conversations', selectedConversation.id, 'messages'), (snapshot) => setMessages(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as DirectMessage).sort((a, b) => timeOf(a.createdAt) - timeOf(b.createdAt))))
+    return onSnapshot(collection(db, 'conversations', selectedConversation.id, 'messages'), (snapshot) => {
+      setMessages(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as DirectMessage).sort((a, b) => timeOf(a.createdAt) - timeOf(b.createdAt)))
+      setDmError(false)
+    }, () => {
+      setMessages([])
+      setDmError(true)
+    })
   }, [selectedConversation])
 
   useEffect(() => {
@@ -558,20 +578,33 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
   }
 
   async function openConversation(friend: PublicProfile) {
+    if (busy) return
     const id = [user.uid, friend.uid].sort().join('_')
     const conversation: Conversation = { id, participants: [user.uid, friend.uid], participantNames: { [user.uid]: profile.displayName, [friend.uid]: friend.displayName }, participantAvatars: { [user.uid]: profile.avatar, [friend.uid]: friend.avatar }, lastMessage: '' }
-    await setDoc(doc(db, 'conversations', id), { ...conversation, updatedAt: serverTimestamp() }, { merge: true })
-    setSelectedConversation(conversation); setTab('dm')
+    setBusy(true)
+    try {
+      await setDoc(doc(db, 'conversations', id), { ...conversation, updatedAt: serverTimestamp() }, { merge: true })
+      setSelectedConversation(conversation)
+      setDmError(false)
+      setTab('dm')
+    } catch {
+      setNotice('トークを開けませんでした。通信を確認してもう一度試してね')
+      setDmError(true)
+    } finally { setBusy(false) }
   }
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault()
-    if (!selectedConversation || !messageText.trim()) return
+    if (!selectedConversation || !messageText.trim() || busy) return
     const text = messageText.trim(); setMessageText('')
+    setBusy(true)
     const batch = writeBatch(db)
     batch.set(doc(collection(db, 'conversations', selectedConversation.id, 'messages')), { senderUid: user.uid, text, createdAt: serverTimestamp() })
     batch.set(doc(db, 'conversations', selectedConversation.id), { lastMessage: text, updatedAt: serverTimestamp() }, { merge: true })
-    await batch.commit().catch(() => { setMessageText(text); setNotice('メッセージを送れませんでした') })
+    await batch.commit()
+      .then(() => setDmError(false))
+      .catch(() => { setMessageText(text); setDmError(true); setNotice('メッセージを送れませんでした。友達状態と通信を確認してね') })
+      .finally(() => setBusy(false))
   }
 
   async function createGroup(event: FormEvent) {
@@ -722,7 +755,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
 
         {tab === 'square' && <section className="page-section social-page"><div className="page-title"><div><p className="section-kicker">SQUARE</p><h1>広場</h1><p>知り合う前の、軽いひとこと。写真も人気数もありません。</p></div><span className="live-chip">24hで消える</span></div><form className="note-composer" onSubmit={postNote}><Avatar config={profile.avatar} size="small" /><textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder="みんなに聞いてみたいことは？" maxLength={160} /><footer><small>{noteText.length}/160</small><button disabled={busy || !noteText.trim()}><Send size={16} /> 放す</button></footer></form><div className="note-feed">{notes.length ? notes.map((note) => <article className="note-card" key={note.id}><Avatar config={note.authorAvatar} size="small" /><div><header><strong>{note.authorName}</strong><span>{Math.max(1, Math.ceil((note.expiresAt - Date.now()) / 3_600_000))}h</span></header><p>{note.text}</p>{note.authorUid !== user.uid && <button className={following.has(note.authorUid) ? 'is-following' : ''} onClick={() => toggleFollow(note.authorUid)}>{following.has(note.authorUid) ? 'フォロー中' : 'フォローする'}</button>}{note.authorUid === user.uid && <button className="delete-note" onClick={() => deleteDoc(doc(db, 'notes', note.id))}>削除</button>}</div></article>) : <Empty emoji="🫧" title="まだ静かな広場です" body="最初のひとことを放してみよう。" />}</div></section>}
 
-        {tab === 'dm' && <section className="page-section dm-page"><div className="page-title"><div><p className="section-kicker">MESSAGES</p><h1>DM</h1><p>DMできるのは、お互いに友達の人だけです。</p></div></div><div className={`dm-layout ${selectedConversation ? 'has-chat' : ''}`}><aside className="conversation-list"><h2>トーク</h2>{conversations.map((conversation) => { const otherUid = conversation.participants.find((id) => id !== user.uid) ?? ''; return <button key={conversation.id} className={selectedConversation?.id === conversation.id ? 'is-active' : ''} onClick={() => setSelectedConversation(conversation)}><Avatar config={conversation.participantAvatars[otherUid]} size="small" /><div><strong>{conversation.participantNames[otherUid]}</strong><span>{conversation.lastMessage || 'トークを始めよう'}</span></div><ChevronRight size={16} /></button> })}{!conversations.length && <Empty emoji="💬" title="まだトークはありません" body="友達のカードから話しかけられます。" />}</aside><div className="chat-panel">{selectedConversation && activeConversationFriend ? <><header><button className="chat-back" onClick={() => setSelectedConversation(null)}><ChevronLeft size={19} /></button><Avatar config={activeConversationFriend.avatar} size="small" /><strong>{activeConversationFriend.name}</strong><span>友達</span></header><div className="message-list">{messages.map((message) => <div key={message.id} className={`message-bubble ${message.senderUid === user.uid ? 'is-mine' : ''}`}>{message.text}</div>)}</div><form className="message-form" onSubmit={sendMessage}><input value={messageText} onChange={(event) => setMessageText(event.target.value)} maxLength={500} placeholder="メッセージを書く" /><button disabled={!messageText.trim()}><Send size={18} /></button></form></> : <Empty emoji="🌻" title="トークを選んでください" body="友達同士だけの、安心できる会話です。" />}</div></div><h2 className="subheading">話せる友達</h2><div className="quick-friends">{friends.map((friend) => <button key={friend.profile.uid} onClick={() => openConversation(friend.profile)}><Avatar config={friend.profile.avatar} size="small" /><span>{friend.profile.displayName}</span></button>)}</div></section>}
+        {tab === 'dm' && <section className="page-section dm-page"><div className="page-title"><div><p className="section-kicker">MESSAGES</p><h1>DM</h1><p>DMできるのは、お互いに友達の人だけです。</p></div></div>{dmError && <div className="inline-error dm-inline-error" role="alert"><strong>DMを読み込めませんでした</strong><p>通信を確認して、友達のカードからもう一度トークを開いてください。</p></div>}<div className={`dm-layout ${selectedConversation ? 'has-chat' : ''}`}><aside className="conversation-list"><h2>トーク</h2>{conversations.map((conversation) => { const otherUid = conversation.participants.find((id) => id !== user.uid) ?? ''; return <button key={conversation.id} className={selectedConversation?.id === conversation.id ? 'is-active' : ''} onClick={() => { setSelectedConversation(conversation); setDmError(false) }}><Avatar config={conversation.participantAvatars[otherUid]} size="small" /><div><strong>{conversation.participantNames[otherUid]}</strong><span>{conversation.lastMessage || 'トークを始めよう'}</span></div><ChevronRight size={16} /></button> })}{!conversations.length && !dmError && <Empty emoji="💬" title="まだトークはありません" body="友達のカードから話しかけられます。" />}</aside><div className="chat-panel">{selectedConversation && activeConversationFriend ? <><header><button type="button" className="chat-back" onClick={() => setSelectedConversation(null)} aria-label="トーク一覧へ戻る"><ChevronLeft size={19} /></button><Avatar config={activeConversationFriend.avatar} size="small" /><strong>{activeConversationFriend.name}</strong><span>友達</span></header><div className="message-list">{messages.map((message) => <div key={message.id} className={`message-bubble ${message.senderUid === user.uid ? 'is-mine' : ''}`}>{message.text}</div>)}</div><form className="message-form" onSubmit={sendMessage}><label className="sr-only" htmlFor="dm-message">メッセージ</label><input id="dm-message" value={messageText} onChange={(event) => setMessageText(event.target.value)} maxLength={500} placeholder="メッセージを書く" /><button disabled={busy || !messageText.trim()} aria-label="メッセージを送信">{busy ? '…' : <Send size={18} />}</button></form></> : <Empty emoji="🌻" title="トークを選んでください" body="友達同士だけの、安心できる会話です。" />}</div></div><h2 className="subheading">話せる友達</h2><div className="quick-friends">{friends.map((friend) => <button disabled={busy} key={friend.profile.uid} onClick={() => openConversation(friend.profile)}><Avatar config={friend.profile.avatar} size="small" /><span>{friend.profile.displayName}</span></button>)}</div></section>}
 
         {tab === 'groups' && <section className="page-section groups-page"><div className="page-title"><div><p className="section-kicker">CIRCLES</p><h1>グループ</h1><p>友達でなくても、招待された仲間と気配を共有できます。</p></div><button className="soft-button" onClick={() => setModal('status')}><Plus size={17} /> 気配を共有</button></div><div className="group-tools"><form onSubmit={createGroup}><h2>グループを作る</h2><input value={groupName} onChange={(event) => setGroupName(event.target.value)} maxLength={20} placeholder="例：2年3組 放課後組" /><button disabled={busy || groupName.trim().length < 2}>作る</button></form><form onSubmit={joinGroup}><h2>招待コードで参加</h2><input value={groupCode} onChange={(event) => setGroupCode(event.target.value.toUpperCase())} maxLength={6} placeholder="ABC234" /><button disabled={busy || groupCode.length !== 6}>参加</button></form></div><div className="group-layout"><aside className="group-list"><h2>参加中</h2>{groups.map((group) => <button key={group.id} className={selectedGroup?.id === group.id ? 'is-active' : ''} onClick={() => setSelectedGroup(group)}><span>🌻</span><div><strong>{group.name}</strong><small>コード {group.inviteCode}</small></div><ChevronRight size={16} /></button>)}{!groups.length && <Empty emoji="👋" title="グループはまだありません" body="作るか、招待コードで参加しよう。" />}</aside><div className="group-detail">{selectedGroup ? <><header><div><h2>{selectedGroup.name}</h2><p>友達関係に関係なく、この中だけで見えます。</p></div><button onClick={() => copyCode(selectedGroup.inviteCode)}><Copy size={15} /> {selectedGroup.inviteCode}</button></header><div className="group-status-grid">{groupStatuses.length ? groupStatuses.map((status) => <article key={status.uid}><Avatar config={status.avatar} size="small" status={status.emoji} /><div><strong>{status.displayName}</strong><p>{status.emoji} {status.text}</p><small>{getRemainingLabel(status)}</small></div></article>) : <Empty emoji="🌙" title="いまは静かです" body="右上のボタンから、このグループだけに気配を共有できます。" />}</div></> : <Empty emoji="🌻" title="グループを選んでください" body="招待制の小さな居場所です。" />}</div></div></section>}
 

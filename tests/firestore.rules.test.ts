@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing'
-import { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 
 const projectId = 'himawa-rules-test'
 let testEnv: RulesTestEnvironment
@@ -150,8 +150,14 @@ describe('HIMAWA Firestore rules', () => {
     const bob = testEnv.authenticatedContext('bob').firestore()
     const mallory = testEnv.authenticatedContext('mallory').firestore()
     await assertSucceeds(getDoc(doc(bob, 'conversations', 'alice_bob')))
+    await assertSucceeds(getDocs(query(collection(bob, 'conversations'), where('participants', 'array-contains', 'bob'))))
     await assertFails(getDoc(doc(mallory, 'conversations', 'alice_bob')))
     await assertSucceeds(setDoc(doc(bob, 'conversations', 'alice_bob', 'messages', 'm1'), { senderUid: 'bob', text: 'こんにちは', createdAt: new Date() }))
+    await assertSucceeds(getDocs(collection(bob, 'conversations', 'alice_bob', 'messages')))
+    const sendBatch = writeBatch(bob)
+    sendBatch.set(doc(bob, 'conversations', 'alice_bob', 'messages', 'm3'), { senderUid: 'bob', text: '今から遊ぼ', createdAt: serverTimestamp() })
+    sendBatch.set(doc(bob, 'conversations', 'alice_bob'), { lastMessage: '今から遊ぼ', updatedAt: serverTimestamp() }, { merge: true })
+    await assertSucceeds(sendBatch.commit())
     await assertFails(setDoc(doc(mallory, 'conversations', 'alice_bob', 'messages', 'm2'), { senderUid: 'mallory', text: '読めない', createdAt: new Date() }))
   })
 
