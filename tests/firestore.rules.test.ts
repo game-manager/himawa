@@ -48,9 +48,12 @@ describe('HIMAWA Firestore rules', () => {
     await assertSucceeds(setDoc(doc(alice, 'users', 'alice'), { ...profile('alice', 'ALICE2'), avatar: photoAvatar }))
     await assertSucceeds(updateDoc(doc(alice, 'users', 'alice'), { avatar: partsAvatar }))
     await assertSucceeds(updateDoc(doc(alice, 'users', 'alice'), { avatar: expandedPartsAvatar }))
+    expect((await getDoc(doc(alice, 'users', 'alice'))).data()?.avatar.photoUrl).toBeUndefined()
     await assertSucceeds(setDoc(doc(alice, 'publicProfiles', 'alice'), {
       uid: 'alice', displayName: 'ありす', avatar: photoAvatar, discoverable: true,
     }))
+    await assertSucceeds(updateDoc(doc(alice, 'publicProfiles', 'alice'), { avatar: expandedPartsAvatar }))
+    expect((await getDoc(doc(alice, 'publicProfiles', 'alice'))).data()?.avatar.photoUrl).toBeUndefined()
     await assertFails(setDoc(doc(alice, 'publicProfiles', 'alice'), {
       uid: 'alice', displayName: 'ありす', avatar: { ...avatar, photoUrl: 'data:image/svg+xml;base64,' + 'A'.repeat(120) }, discoverable: true,
     }))
@@ -96,6 +99,13 @@ describe('HIMAWA Firestore rules', () => {
     batch.set(doc(bob, 'users', 'alice', 'friends', 'bob'), { uid: 'bob', requestId: 'request-1', createdAt: serverTimestamp() })
     batch.set(doc(bob, 'users', 'bob', 'friends', 'alice'), { uid: 'alice', requestId: 'request-1', createdAt: serverTimestamp() })
     await assertSucceeds(batch.commit())
+
+    await assertFails(getDoc(doc(bob, 'conversations', 'alice_bob')))
+    await assertSucceeds(setDoc(doc(bob, 'conversations', 'alice_bob'), {
+      participants: ['alice', 'bob'], participantNames: { alice: 'ありす', bob: 'ぼぶ' },
+      participantAvatars: { alice: avatar, bob: avatar }, lastMessage: '', updatedAt: serverTimestamp(),
+    }))
+    await assertSucceeds(getDoc(doc(bob, 'conversations', 'alice_bob')))
 
     const alice = testEnv.authenticatedContext('alice').firestore()
     await assertSucceeds(getDoc(doc(alice, 'users', 'bob')))

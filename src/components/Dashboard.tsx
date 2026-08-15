@@ -502,7 +502,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
     const currentFriendIds = new Set(friendIds)
     return onSnapshot(query(collection(db, 'conversations'), where('participants', 'array-contains', user.uid)), (snapshot) => {
       setConversations(snapshot.docs
-        .map((item) => ({ id: item.id, ...item.data() }) as Conversation)
+        .map((item) => ({ id: item.id, ...item.data(), lastMessage: item.data().lastMessage ?? '' }) as Conversation)
         .filter((conversation) => conversation.participants.some((uid) => uid !== user.uid && currentFriendIds.has(uid)))
         .sort((a, b) => timeOf(b.updatedAt) - timeOf(a.updatedAt)))
       setDmError(false)
@@ -563,14 +563,17 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
     setBusy(true)
     try {
       const statusRef = doc(db, 'statusShares', user.uid)
+      const publicProfileRef = doc(db, 'publicProfiles', user.uid)
       const groupStatusRefs = groups.map((group) => doc(db, 'groups', group.id, 'statuses', user.uid))
-      const [statusSnapshot, ...groupStatusSnapshots] = await Promise.all([
+      const [statusSnapshot, publicProfileSnapshot, ...groupStatusSnapshots] = await Promise.all([
         getDoc(statusRef),
+        getDoc(publicProfileRef),
         ...groupStatusRefs.map((reference) => getDoc(reference)),
       ])
       const batch = writeBatch(db)
-      batch.set(doc(db, 'users', user.uid), { avatar }, { merge: true })
-      batch.set(doc(db, 'publicProfiles', user.uid), { avatar, updatedAt: serverTimestamp() }, { merge: true })
+      batch.update(doc(db, 'users', user.uid), { avatar })
+      if (publicProfileSnapshot.exists()) batch.update(publicProfileRef, { avatar, updatedAt: serverTimestamp() })
+      else batch.set(publicProfileRef, { uid: user.uid, displayName: profile.displayName, avatar, bio: profile.bio ?? '', discoverable: profile.discoverable ?? true, updatedAt: serverTimestamp() })
       if (statusSnapshot.exists()) batch.update(statusRef, { avatar })
       groupStatusSnapshots.forEach((snapshot, index) => {
         if (snapshot.exists()) batch.update(groupStatusRefs[index], { avatar })
@@ -620,6 +623,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
         batch.set(doc(db, 'users', user.uid, 'friends', request.fromUid), { uid: request.fromUid, requestId: request.id, createdAt: serverTimestamp() })
         batch.set(doc(db, 'users', request.fromUid, 'friends', user.uid), { uid: user.uid, requestId: request.id, createdAt: serverTimestamp() })
         await batch.commit()
+        await ensureConversation({ uid: request.fromUid, displayName: request.fromName, avatar: request.fromAvatar, bio: '', discoverable: true }).catch(() => undefined)
       }
       setNotice(accept ? `${request.fromName}さんと友達になりました` : '申請を断りました')
     } catch { setNotice('申請を更新できませんでした') } finally { setBusy(false) }
@@ -670,33 +674,39 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
     await batch.commit().catch(() => setNotice('フォローを更新できませんでした'))
   }
 
-  async function openConversation(friend: PublicProfile) {
-    if (busy) return
+  async function ensureConversation(friend: PublicProfile) {
     const id = [user.uid, friend.uid].sort().join('_')
     const conversationRef = doc(db, 'conversations', id)
+    const participants = [user.uid, friend.uid].sort()
+    try {
+      const snapshot = await getDoc(conversationRef)
+      if (snapshot.exists()) {
+        const stored = snapshot.data() as Omit<Conversation, 'id'>
+        if (!stored.participants.includes(friend.uid) || !stored.participants.includes(user.uid)) throw new Error('INVALID_CONVERSATION')
+        return { ...stored, id, lastMessage: stored.lastMessage ?? '' } as Conversation
+      }
+    } catch (reason) {
+      if (reason instanceof Error && reason.message === 'INVALID_CONVERSATION') throw reason
+      // Firestore denies get on a document that does not exist because the
+      // participant fields cannot be checked yet. Creating it is allowed once
+      // the mutual friendship documents exist.
+    }
+    const conversation: Conversation = {
+      id,
+      participants,
+      participantNames: { [user.uid]: profile.displayName, [friend.uid]: friend.displayName },
+      participantAvatars: { [user.uid]: profile.avatar, [friend.uid]: friend.avatar },
+      lastMessage: '',
+    }
+    await setDoc(conversationRef, { ...conversation, updatedAt: serverTimestamp() })
+    return conversation
+  }
+
+  async function openConversation(friend: PublicProfile) {
+    if (busy) return
     setBusy(true)
     try {
-      const existing = await getDoc(conversationRef)
-      let conversation: Conversation
-      if (existing.exists()) {
-        const stored = existing.data() as Omit<Conversation, 'id'>
-        if (!stored.participants.includes(friend.uid)) throw new Error('INVALID_CONVERSATION')
-        conversation = {
-          ...stored,
-          id,
-          participantNames: { ...stored.participantNames, [user.uid]: profile.displayName, [friend.uid]: friend.displayName },
-          participantAvatars: { ...stored.participantAvatars, [user.uid]: profile.avatar, [friend.uid]: friend.avatar },
-        }
-      } else {
-        conversation = {
-          id,
-          participants: [user.uid, friend.uid].sort(),
-          participantNames: { [user.uid]: profile.displayName, [friend.uid]: friend.displayName },
-          participantAvatars: { [user.uid]: profile.avatar, [friend.uid]: friend.avatar },
-          lastMessage: '',
-        }
-        await setDoc(conversationRef, { ...conversation, updatedAt: serverTimestamp() })
-      }
+      const conversation = await ensureConversation(friend)
       setSelectedConversation(conversation)
       setDmError(false)
       setTab('dm')
