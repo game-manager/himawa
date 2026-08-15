@@ -40,6 +40,21 @@ describe('HIMAWA Firestore rules', () => {
     await assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), 'users', 'alice')))
   })
 
+  it('accepts only optimized raster photos in avatars', async () => {
+    const alice = testEnv.authenticatedContext('alice').firestore()
+    const photoAvatar = { ...avatar, photoUrl: 'data:image/jpeg;base64,' + 'A'.repeat(120) }
+    await assertSucceeds(setDoc(doc(alice, 'users', 'alice'), { ...profile('alice', 'ALICE2'), avatar: photoAvatar }))
+    await assertSucceeds(setDoc(doc(alice, 'publicProfiles', 'alice'), {
+      uid: 'alice', displayName: 'ありす', avatar: photoAvatar, discoverable: true,
+    }))
+    await assertFails(setDoc(doc(alice, 'publicProfiles', 'alice'), {
+      uid: 'alice', displayName: 'ありす', avatar: { ...avatar, photoUrl: 'data:image/svg+xml;base64,' + 'A'.repeat(120) }, discoverable: true,
+    }))
+    await assertFails(setDoc(doc(alice, 'publicProfiles', 'alice'), {
+      uid: 'alice', displayName: 'ありす', avatar: { ...avatar, photoUrl: 'data:image/jpeg;base64,' + 'A'.repeat(125001) }, discoverable: true,
+    }))
+  })
+
   it('lets only the owner record that the notification prompt was shown', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), 'users', 'alice'), profile('alice', 'ALICE2'))

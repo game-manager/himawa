@@ -33,9 +33,15 @@ service cloud.firestore {
     }
     function validAvatar(avatar) {
       return avatar is map
-        && avatar.keys().hasOnly(['skin', 'hair', 'outfit', 'background'])
+        && avatar.keys().hasOnly(['skin', 'hair', 'outfit', 'background', 'photoUrl'])
         && avatar.skin is string && avatar.hair is string
-        && avatar.outfit is string && avatar.background is string;
+        && avatar.outfit is string && avatar.background is string
+        && (!('photoUrl' in avatar) || (
+          avatar.photoUrl is string
+          && avatar.photoUrl.size() >= 100
+          && avatar.photoUrl.size() <= 125000
+          && avatar.photoUrl.matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$')
+        ));
     }
     function validMusic(data) {
       return !('music' in data) || (
@@ -105,7 +111,8 @@ service cloud.firestore {
       allow update: if isOwner(uid)
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.friendCode == resource.data.friendCode
-        && request.resource.data.createdAt == resource.data.createdAt;
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validAvatar(request.resource.data.avatar);
       allow delete: if isOwner(uid);
 
       match /friends/{friendUid} {
@@ -164,6 +171,7 @@ service cloud.firestore {
         && request.resource.data.text.size() >= 1
         && request.resource.data.text.size() <= 60
         && request.resource.data.emoji is string
+        && validAvatar(request.resource.data.avatar)
         && request.resource.data.visibility == 'friends'
         && request.resource.data.expiresAt is number
         && (!('availability' in request.resource.data) || request.resource.data.availability in ['free', 'maybe', 'busy'])
@@ -304,6 +312,7 @@ service cloud.firestore {
           && request.resource.data.text is string
           && request.resource.data.text.size() >= 1
           && request.resource.data.text.size() <= 60
+          && validAvatar(request.resource.data.avatar)
           && request.resource.data.expiresAt is number
           && validMusic(request.resource.data);
         allow delete: if isGroupMember(groupId) && statusUid == request.auth.uid;

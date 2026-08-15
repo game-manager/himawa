@@ -4,24 +4,11 @@ import type { User } from 'firebase/auth'
 import { ArrowRight, Check, Shuffle } from 'lucide-react'
 import { db } from '../lib/firebase'
 import type { AvatarConfig } from '../lib/models'
-import { Avatar, DEFAULT_AVATAR } from './Avatar'
-
-const avatarChoices: Array<{ key: keyof AvatarConfig; label: string; values: string[] }> = [
-  { key: 'skin', label: '肌', values: ['peach', 'honey', 'cocoa', 'rose'] },
-  { key: 'hair', label: '髪', values: ['ink', 'chestnut', 'coral', 'violet'] },
-  { key: 'outfit', label: '服', values: ['tomato', 'mint', 'blue', 'yellow'] },
-  { key: 'background', label: '背景', values: ['cream', 'pink', 'sky', 'lilac'] },
-]
+import { Avatar, AVATAR_CHOICES, DEFAULT_AVATAR, randomAvatar } from './Avatar'
 
 function randomCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('')
-}
-
-function randomAvatar(): AvatarConfig {
-  return Object.fromEntries(
-    avatarChoices.map((choice) => [choice.key, choice.values[Math.floor(Math.random() * choice.values.length)]]),
-  ) as AvatarConfig
 }
 
 export function Onboarding({ user }: { user: User }) {
@@ -104,7 +91,7 @@ export function Onboarding({ user }: { user: User }) {
         <div className="onboarding-customizer">
           <div className="onboarding-value"><span>1</span><p><strong>名前とアイコンを決める</strong><small>次のホームで友達追加と「ひま！」をすぐ試せます。</small></p></div>
           <div className="avatar-options">
-            {avatarChoices.map((choice) => (
+            {AVATAR_CHOICES.map((choice) => (
               <div className="avatar-option-row" key={choice.key}>
                 <span>{choice.label}</span>
                 <div>

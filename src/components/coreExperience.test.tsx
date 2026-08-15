@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { DEFAULT_AVATAR } from './Avatar'
+import { Avatar, DEFAULT_AVATAR } from './Avatar'
+import { AvatarEditor } from './AvatarEditor'
 import { FriendStatusCard } from './FriendStatusCard'
 import { MusicPicker } from './MusicPicker'
 import { StatusComposer } from './StatusComposer'
@@ -33,7 +34,7 @@ describe('HIMAWA core experience', () => {
           expiresAt: now + 42 * 60_000,
           music: {
             provider: 'spotify', trackId: '11dFghVXANMlKmJXsNCbNl',
-            url: 'https://open.spotify.com/track/11dFghVXANMlKmJXsNCbNl', title: 'Cut To The Feeling',
+            url: 'https://open.spotify.com/track/11dFghVXANMlKmJXsNCbNl', title: 'Cut To The Feeling', artistName: 'Carly Rae Jepsen',
           },
         },
       }}
@@ -48,6 +49,7 @@ describe('HIMAWA core experience', () => {
     expect(html).toContain('あと42分')
     expect(html).toContain('ゲームしよ')
     expect(html).toContain('Cut To The Feeling')
+    expect(html).toContain('Carly Rae Jepsen')
   })
 
   it('treats an expired status as unavailable and disables invitations', () => {
@@ -103,6 +105,18 @@ describe('HIMAWA core experience', () => {
     expect(html).toContain('夜に駆ける')
     expect(html).toContain('YOASOBI · Apple Music')
     expect(html).toContain('夜に駆けるを試聴')
+  })
+
+  it('supports both uploaded photos and part-based avatar editing', () => {
+    const photoUrl = `data:image/jpeg;base64,${'A'.repeat(120)}`
+    const avatarHtml = renderToStaticMarkup(<Avatar config={{ ...DEFAULT_AVATAR, photoUrl }} />)
+    const editorHtml = renderToStaticMarkup(<AvatarEditor current={DEFAULT_AVATAR} busy={false} onSave={vi.fn()} />)
+
+    expect(avatarHtml).toContain('avatar__photo')
+    expect(avatarHtml).toContain(photoUrl)
+    expect(editorHtml).toContain('画像を選ぶ')
+    expect(editorHtml).toContain('おまかせ')
+    expect(editorHtml).toContain('このアイコンにする')
   })
 
   it('explains notification scope and where the choice can be changed later', () => {

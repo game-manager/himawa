@@ -3,6 +3,7 @@ export type AvatarConfig = {
   hair: string
   outfit: string
   background: string
+  photoUrl?: string
 }
 
 export type LegacyStatusKind =
