@@ -40,18 +40,41 @@ service cloud.firestore {
     function validMusic(data) {
       return !('music' in data) || (
         data.music is map
-        && data.music.keys().hasOnly(['provider', 'trackId', 'url', 'title', 'thumbnailUrl'])
-        && data.music.provider == 'spotify'
+        && data.music.keys().hasOnly(['provider', 'trackId', 'url', 'title', 'artistName', 'thumbnailUrl', 'previewUrl'])
         && data.music.trackId is string
-        && data.music.trackId.matches('^[A-Za-z0-9]{22}$')
-        && data.music.url == 'https://open.spotify.com/track/' + data.music.trackId
+        && data.music.url is string
         && data.music.title is string
         && data.music.title.size() >= 1
         && data.music.title.size() <= 100
-        && (!('thumbnailUrl' in data.music) || (
-          data.music.thumbnailUrl is string
-          && data.music.thumbnailUrl.matches('^https://[A-Za-z0-9.-]+\\.(spotifycdn\\.com|scdn\\.co)/.*$')
-        ))
+        && (!('artistName' in data.music) || (data.music.artistName is string && data.music.artistName.size() >= 1 && data.music.artistName.size() <= 100))
+        && (
+          (
+            data.music.provider == 'spotify'
+            && data.music.trackId.matches('^[A-Za-z0-9]{22}$')
+            && data.music.url == 'https://open.spotify.com/track/' + data.music.trackId
+            && !('previewUrl' in data.music)
+            && (!('thumbnailUrl' in data.music) || (
+              data.music.thumbnailUrl is string
+              && data.music.thumbnailUrl.matches('^https://[A-Za-z0-9.-]+\\.(spotifycdn\\.com|scdn\\.co)/.*$')
+            ))
+          )
+          || (
+            data.music.provider == 'apple'
+            && data.music.trackId.matches('^[0-9]{1,20}$')
+            && data.music.url.matches('^https://(music|itunes)\\.apple\\.com/.*$')
+            && data.music.artistName is string
+            && data.music.artistName.size() >= 1
+            && data.music.artistName.size() <= 100
+            && (!('thumbnailUrl' in data.music) || (
+              data.music.thumbnailUrl is string
+              && data.music.thumbnailUrl.matches('^https://([A-Za-z0-9.-]+\\.)?mzstatic\\.com/.*$')
+            ))
+            && (!('previewUrl' in data.music) || (
+              data.music.previewUrl is string
+              && data.music.previewUrl.matches('^https://[A-Za-z0-9.-]*itunes\\.apple\\.com/.*$')
+            ))
+          )
+        )
       );
     }
     function validProfile(uid) {

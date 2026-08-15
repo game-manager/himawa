@@ -36,9 +36,9 @@ export function FriendStatusCard({
         <header><h3 title={friend.profile.displayName}>{friend.profile.displayName}</h3><span className={`availability-badge availability-badge--${availability}`}><i aria-hidden="true" />{availabilityMeta.shortLabel}</span></header>
         {activities.length > 0 ? <div className="friend-activities">{activities.map((item) => <span key={item.value}>{item.emoji} {item.statusLabel}</span>)}</div> : <p className="friend-no-activity">{canInvite ? '何するかは誘ってから決めよう' : '今は誘わないでほしいみたい'}</p>}
         {note && <p className="friend-status-note">「{note}」</p>}
-        {status?.music && <button type="button" className="friend-music-chip" onClick={() => onMusic?.(status.music!)} aria-label={`${status.music.title}をSpotifyで試聴`}>
+        {status?.music && <button type="button" className="friend-music-chip" onClick={() => onMusic?.(status.music!)} aria-label={`${status.music.title}を試聴`}>
           {status.music.thumbnailUrl ? <img src={status.music.thumbnailUrl} alt="" /> : <span aria-hidden="true"><Music2 size={13} /></span>}
-          <strong>{status.music.title}</strong><Music2 size={12} aria-hidden="true" />
+          <span className="friend-music-chip__text"><strong>{status.music.title}</strong>{status.music.artistName && <small>{status.music.artistName}</small>}</span><Music2 size={12} aria-hidden="true" />
         </button>}
         <div className="friend-status-meta"><span><Clock3 size={13} />{getRemainingLabel(status, now)}</span>{status && <span>{getUpdatedLabel(status, now)}</span>}</div>
       </div>

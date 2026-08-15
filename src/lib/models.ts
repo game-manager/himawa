@@ -20,13 +20,18 @@ export type AvailabilityLevel = 'free' | 'maybe' | 'busy'
 
 export type ActivityKind = 'game' | 'food' | 'outing' | 'talk' | 'sports' | 'study' | 'other'
 
-export type MusicAttachment = {
-  provider: 'spotify'
+type MusicAttachmentBase = {
   trackId: string
   url: string
   title: string
+  artistName?: string
   thumbnailUrl?: string
 }
+
+export type MusicAttachment = MusicAttachmentBase & (
+  | { provider: 'spotify' }
+  | { provider: 'apple'; previewUrl?: string }
+)
 
 export type CurrentStatus = {
   text: string

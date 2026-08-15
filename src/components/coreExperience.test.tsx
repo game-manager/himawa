@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_AVATAR } from './Avatar'
 import { FriendStatusCard } from './FriendStatusCard'
+import { MusicPicker } from './MusicPicker'
 import { StatusComposer } from './StatusComposer'
 import { NotificationPermissionPrompt } from './Dashboard'
 
@@ -88,7 +89,20 @@ describe('HIMAWA core experience', () => {
     expect(html).toContain('1時間')
     expect(html).toContain('3時間')
     expect(html).toContain('今日いっぱい')
-    expect(html).toContain('Spotifyの曲リンクを貼る')
+    expect(html).toContain('曲名・アーティスト名で検索')
+    expect(html).toContain('Spotifyリンクから追加')
+  })
+
+  it('shows the selected searchable song with its artist and preview action', () => {
+    const html = renderToStaticMarkup(<MusicPicker value={{
+      provider: 'apple', trackId: '1490256995', title: '夜に駆ける', artistName: 'YOASOBI',
+      url: 'https://music.apple.com/jp/album/example/1?i=1490256995',
+      previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/example.m4a',
+    }} onChange={vi.fn()} />)
+
+    expect(html).toContain('夜に駆ける')
+    expect(html).toContain('YOASOBI · Apple Music')
+    expect(html).toContain('夜に駆けるを試聴')
   })
 
   it('explains notification scope and where the choice can be changed later', () => {

@@ -130,7 +130,7 @@ describe('HIMAWA Firestore rules', () => {
     }))
   })
 
-  it('accepts only sanitized Spotify tracks on a status', async () => {
+  it('accepts only sanitized music tracks on a status', async () => {
     const alice = testEnv.authenticatedContext('alice').firestore()
     const baseStatus = {
       uid: 'alice', displayName: 'ありす', avatar, text: 'この曲きいてる', emoji: '🟢',
@@ -144,6 +144,15 @@ describe('HIMAWA Firestore rules', () => {
 
     await assertSucceeds(setDoc(doc(alice, 'statusShares', 'alice'), { ...baseStatus, music }))
     await assertFails(setDoc(doc(alice, 'statusShares', 'alice'), { ...baseStatus, music: { ...music, url: 'https://evil.example/track' } }))
+
+    const appleMusic = {
+      provider: 'apple', trackId: '1234567890', title: '夜に駆ける', artistName: 'YOASOBI',
+      url: 'https://music.apple.com/jp/album/example/123?i=1234567890',
+      thumbnailUrl: 'https://is1-ssl.mzstatic.com/image/thumb/example/100x100bb.jpg',
+      previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/example.m4a',
+    }
+    await assertSucceeds(setDoc(doc(alice, 'statusShares', 'alice'), { ...baseStatus, music: appleMusic }))
+    await assertFails(setDoc(doc(alice, 'statusShares', 'alice'), { ...baseStatus, music: { ...appleMusic, previewUrl: 'https://evil.example/preview.m4a' } }))
   })
 
   it('allows short invitations but rejects oversized invitation text', async () => {
