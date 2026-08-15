@@ -61,8 +61,48 @@ export async function searchMusic(query: string, signal?: AbortSignal): Promise<
     lang: 'ja_jp',
     explicit: 'No',
   })
+  const data = typeof document === 'undefined'
+    ? await fetchMusic(params, signal)
+    : await searchMusicWithJsonp(params, signal)
+  return (data.results ?? []).map(toMusicAttachment).filter((track): track is MusicAttachment => track !== null)
+}
+
+async function fetchMusic(params: URLSearchParams, signal?: AbortSignal) {
   const response = await fetch(`https://itunes.apple.com/search?${params}`, { signal })
   if (!response.ok) throw new Error('MUSIC_SEARCH_FAILED')
-  const data = await response.json() as ItunesSearchResponse
-  return (data.results ?? []).map(toMusicAttachment).filter((track): track is MusicAttachment => track !== null)
+  return response.json() as Promise<ItunesSearchResponse>
+}
+
+function searchMusicWithJsonp(params: URLSearchParams, signal?: AbortSignal) {
+  return new Promise<ItunesSearchResponse>((resolve, reject) => {
+    const callbackName = `himawaMusic_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const callbacks = window as unknown as Record<string, unknown>
+    const script = document.createElement('script')
+    const timeout = window.setTimeout(() => finish(() => reject(new Error('MUSIC_SEARCH_TIMEOUT'))), 10_000)
+
+    function cleanup() {
+      window.clearTimeout(timeout)
+      signal?.removeEventListener('abort', abort)
+      script.remove()
+      delete callbacks[callbackName]
+    }
+
+    function finish(action: () => void) {
+      cleanup()
+      action()
+    }
+
+    function abort() {
+      finish(() => reject(new DOMException('Aborted', 'AbortError')))
+    }
+
+    callbacks[callbackName] = (data: ItunesSearchResponse) => finish(() => resolve(data))
+    script.async = true
+    script.referrerPolicy = 'no-referrer'
+    script.src = `https://itunes.apple.com/search?${params}&callback=${encodeURIComponent(callbackName)}`
+    script.onerror = () => finish(() => reject(new Error('MUSIC_SEARCH_FAILED')))
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) return abort()
+    document.head.append(script)
+  })
 }
