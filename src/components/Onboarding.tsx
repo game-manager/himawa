@@ -99,11 +99,11 @@ export function Onboarding({ user }: { user: User }) {
                     <button
                       type="button"
                       key={value}
-                      className={`swatch swatch--${choice.key}-${value} ${avatar[choice.key] === value ? 'is-selected' : ''}`}
+                      className={`swatch ${choice.previews ? 'swatch--part' : ''} swatch--${choice.key}-${value} ${avatar[choice.key] === value ? 'is-selected' : ''}`}
                       onClick={() => setAvatar((current) => ({ ...current, [choice.key]: value }))}
-                      aria-label={`${choice.label}を${value}にする`}
+                      aria-label={`${choice.label}を${choice.previews?.[value] ?? value}にする`}
                     >
-                      {avatar[choice.key] === value && <Check size={14} />}
+                      {choice.previews?.[value] ?? (avatar[choice.key] === value && <Check size={14} />)}
                     </button>
                   ))}
                 </div>

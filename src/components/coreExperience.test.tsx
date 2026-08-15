@@ -4,6 +4,7 @@ import { Avatar, DEFAULT_AVATAR } from './Avatar'
 import { AvatarEditor } from './AvatarEditor'
 import { FriendStatusCard } from './FriendStatusCard'
 import { MusicPicker } from './MusicPicker'
+import { formatPlaybackTime, MusicPreviewPlayer } from './MusicPreviewPlayer'
 import { StatusComposer } from './StatusComposer'
 import { NotificationPermissionPrompt } from './Dashboard'
 
@@ -116,7 +117,23 @@ describe('HIMAWA core experience', () => {
     expect(avatarHtml).toContain(photoUrl)
     expect(editorHtml).toContain('画像を選ぶ')
     expect(editorHtml).toContain('おまかせ')
+    expect(editorHtml).toContain('髪型')
+    expect(editorHtml).toContain('口')
+    expect(editorHtml).toContain('帽子')
     expect(editorHtml).toContain('このアイコンにする')
+  })
+
+  it('renders a branded music player with custom playback controls', () => {
+    const html = renderToStaticMarkup(<MusicPreviewPlayer music={{
+      provider: 'apple', trackId: '1490256995', title: '夜に駆ける', artistName: 'YOASOBI',
+      url: 'https://music.apple.com/jp/album/example/1?i=1490256995',
+      previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/example.m4a',
+    }} />)
+
+    expect(html).toContain('NOW PLAYING · Apple Music')
+    expect(html).toContain('試聴位置')
+    expect(html).toContain('Apple Musicでフル再生')
+    expect(formatPlaybackTime(65.9)).toBe('1:05')
   })
 
   it('explains notification scope and where the choice can be changed later', () => {

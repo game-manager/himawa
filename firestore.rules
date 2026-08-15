@@ -33,9 +33,12 @@ service cloud.firestore {
     }
     function validAvatar(avatar) {
       return avatar is map
-        && avatar.keys().hasOnly(['skin', 'hair', 'outfit', 'background', 'photoUrl'])
+        && avatar.keys().hasOnly(['skin', 'hair', 'hairStyle', 'mouth', 'hat', 'outfit', 'background', 'photoUrl'])
         && avatar.skin is string && avatar.hair is string
         && avatar.outfit is string && avatar.background is string
+        && (!('hairStyle' in avatar) || avatar.hairStyle in ['soft', 'bob', 'short', 'wave'])
+        && (!('mouth' in avatar) || avatar.mouth in ['smile', 'open', 'grin', 'calm'])
+        && (!('hat' in avatar) || avatar.hat in ['none', 'cap', 'beanie', 'flower'])
         && (!('photoUrl' in avatar) || (
           avatar.photoUrl is string
           && avatar.photoUrl.size() >= 100

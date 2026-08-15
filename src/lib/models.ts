@@ -1,6 +1,9 @@
 export type AvatarConfig = {
   skin: string
   hair: string
+  hairStyle?: string
+  mouth?: string
+  hat?: string
   outfit: string
   background: string
   photoUrl?: string

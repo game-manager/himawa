@@ -2,14 +2,14 @@ import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Check, ImagePlus, Shuffle, Trash2 } from 'lucide-react'
 import type { AvatarConfig } from '../lib/models'
 import { avatarWithoutPhoto, prepareAvatarPhoto } from '../lib/avatarImage'
-import { Avatar, AVATAR_CHOICES, randomAvatar } from './Avatar'
+import { Avatar, AVATAR_CHOICES, DEFAULT_AVATAR, randomAvatar, type AvatarPartKey } from './Avatar'
 
 export function AvatarEditor({ current, busy, onSave }: { current: AvatarConfig; busy: boolean; onSave: (avatar: AvatarConfig) => void }) {
   const [avatar, setAvatar] = useState(current)
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState('')
 
-  function updatePart(key: 'skin' | 'hair' | 'outfit' | 'background', value: string) {
+  function updatePart(key: AvatarPartKey, value: string) {
     setAvatar((item) => ({ ...avatarWithoutPhoto(item), [key]: value }))
     setError('')
   }
@@ -40,7 +40,7 @@ export function AvatarEditor({ current, busy, onSave }: { current: AvatarConfig;
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="avatar-options avatar-editor__parts">
       {AVATAR_CHOICES.map((choice) => <div className="avatar-option-row" key={choice.key}>
-        <span>{choice.label}</span><div>{choice.values.map((value) => <button type="button" key={value} className={`swatch swatch--${choice.key}-${value} ${!avatar.photoUrl && avatar[choice.key] === value ? 'is-selected' : ''}`} onClick={() => updatePart(choice.key, value)} aria-label={`${choice.label}を${value}にする`}>{!avatar.photoUrl && avatar[choice.key] === value && <Check size={14} />}</button>)}</div>
+        <span>{choice.label}</span><div>{choice.values.map((value) => { const selected = !avatar.photoUrl && (avatar[choice.key] ?? DEFAULT_AVATAR[choice.key]) === value; return <button type="button" key={value} className={`swatch ${choice.previews ? 'swatch--part' : ''} swatch--${choice.key}-${value} ${selected ? 'is-selected' : ''}`} onClick={() => updatePart(choice.key, value)} aria-label={`${choice.label}を${choice.previews?.[value] ?? value}にする`}>{choice.previews?.[value] ?? (selected && <Check size={14} />)}</button> })}</div>
       </div>)}
     </div>
     <button className="primary-button avatar-save-button" type="submit" disabled={busy || processing}>{busy ? '保存中…' : 'このアイコンにする'}</button>

@@ -35,7 +35,6 @@ import {
   ChevronRight,
   Compass,
   Copy,
-  ExternalLink,
   Home,
   KeyRound,
   LogOut,
@@ -71,7 +70,6 @@ import type {
   StatusShare,
   UserProfile,
 } from '../lib/models'
-import { spotifyEmbedUrl } from '../lib/spotify'
 import {
   ACTIVITY_OPTIONS,
   activityOption,
@@ -85,6 +83,7 @@ import {
 import { Avatar } from './Avatar'
 import { AvatarEditor } from './AvatarEditor'
 import { FriendStatusCard, type FriendStatusView } from './FriendStatusCard'
+import { MusicPreviewPlayer } from './MusicPreviewPlayer'
 import { StatusComposer } from './StatusComposer'
 
 type Tab = 'home' | 'friends' | 'square' | 'dm' | 'groups' | 'settings'
@@ -952,7 +951,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
       {modal === 'invite' && <Modal title="友達とつながる" onClose={() => setModal(null)}><div className="my-code-card"><p>あなたの友達コード</p><strong>{profile.friendCode}</strong><div><button onClick={() => copyCode()}><Copy size={16} /> コード</button><button onClick={shareInvite}><Share2 size={16} /> 招待リンク</button></div></div><div className="divider"><span>友達のコードを持っている</span></div><label className="code-input-label">友達コード<input value={friendCode} onChange={(event) => setFriendCode(event.target.value.toUpperCase())} maxLength={6} placeholder="ABC234" /></label><button className="primary-button" disabled={busy || friendCode.length !== 6} onClick={sendRequest}>{busy ? '送信中…' : '友達申請を送る'} {!busy && <Send size={17} />}</button><p className="modal-note">実際に知っている友達から受け取ったコードだけを使ってね。</p></Modal>}
       {modal === 'poke' && pokeTarget && <Modal title={`${pokeTarget.displayName}さんを誘う`} onClose={() => setModal(null)}><p className="invite-modal-lead">タップすると、すぐ相手のお知らせに届きます。</p><div className="invite-quick-options">{inviteOptions.map((option, index) => <button className={index === 0 ? 'is-recommended' : ''} key={option.value} onClick={() => sendInvite(pokeTarget, option.value)} disabled={busy}><span>{option.emoji}</span><strong>{option.inviteLabel}</strong>{index === 0 && <small>おすすめ</small>}</button>)}</div><form className="custom-invite-form" onSubmit={(event) => { event.preventDefault(); if (inviteMessage.trim()) sendInvite(pokeTarget, undefined, inviteMessage) }}><label>自由に誘う<input value={inviteMessage} onChange={(event) => setInviteMessage(event.target.value)} maxLength={60} placeholder="例：20時から通話しない？" /></label><button disabled={busy || !inviteMessage.trim()} aria-label="自由入力の誘いを送る"><Send size={17} /></button></form></Modal>}
       {modal === 'notifications' && <Modal title="お知らせ" onClose={() => setModal(null)}><div className="notification-list">{requests.map((request) => <article className="inbox-card" key={request.id}><Avatar config={request.fromAvatar} size="small" /><div><strong>{request.fromName}</strong><p>友達になりたいみたい</p></div><button className="accept-button" disabled={busy} onClick={() => respondToRequest(request, true)} aria-label={`${request.fromName}さんの申請を承認`}><Check size={17} /></button><button className="decline-button" disabled={busy} onClick={() => respondToRequest(request, false)} aria-label={`${request.fromName}さんの申請を断る`}><X size={17} /></button></article>)}{pokes.map((poke) => { const detail = pokeLabel(poke.kind); const activity = activityOption(poke.activity); return <button className={`poke-inbox-card ${poke.readAt ? '' : 'is-unread'}`} key={poke.id} onClick={() => !poke.readAt && updateDoc(doc(db, 'pokes', poke.id), { readAt: Date.now() })}><span className="poke-inbox-card__emoji">{activity?.emoji ?? detail.emoji}</span><div><strong>{poke.fromName}さんからのお誘い</strong><p>「{poke.message ?? detail.label}」</p></div>{!poke.readAt && <i className="unread-dot" aria-label="未読" />}</button> })}{!requests.length && !pokes.length && <Empty emoji="🔔" title="まだお知らせはありません" body="友達からの誘いや友達申請がここに届きます。" />}</div></Modal>}
-      {modal === 'music' && selectedMusic && <Modal title="ステータスの音楽" onClose={() => { setModal(null); setSelectedMusic(null) }}><div className="music-player"><div className="music-player__title">{selectedMusic.thumbnailUrl ? <img src={selectedMusic.thumbnailUrl} alt="" /> : <span><Music2 size={22} /></span>}<div><strong>{selectedMusic.title}</strong><small>{selectedMusic.artistName ? `${selectedMusic.artistName} · ` : ''}{selectedMusic.provider === 'spotify' ? 'Spotify' : 'Apple Music'}</small></div></div>{selectedMusic.provider === 'spotify' ? <iframe src={spotifyEmbedUrl(selectedMusic.trackId)} title={`${selectedMusic.title}のSpotifyプレイヤー`} width="100%" height="152" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" /> : selectedMusic.previewUrl ? <audio controls preload="none" src={selectedMusic.previewUrl}>お使いのブラウザは音声の再生に対応していません。</audio> : <p className="music-preview-unavailable">この曲には試聴音源がありません。</p>}<a className={`music-player__link music-player__link--${selectedMusic.provider}`} href={selectedMusic.url} target="_blank" rel="noopener noreferrer">{selectedMusic.provider === 'spotify' ? 'Spotify' : 'Apple Music'}で開く <ExternalLink size={14} /></a></div></Modal>}
+      {modal === 'music' && selectedMusic && <Modal title="ステータスの音楽" onClose={() => { setModal(null); setSelectedMusic(null) }}><MusicPreviewPlayer music={selectedMusic} /></Modal>}
       {showPushPrompt && <NotificationPermissionPrompt busy={pushPromptBusy} onAnswer={answerPushPrompt} />}
     </main>
   )
