@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { doc, runTransaction, serverTimestamp } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
-import { ArrowRight, Check, Shuffle } from 'lucide-react'
+import { ArrowRight, Shuffle } from 'lucide-react'
 import { db } from '../lib/firebase'
 import type { AvatarConfig } from '../lib/models'
-import { Avatar, AVATAR_CHOICES, DEFAULT_AVATAR, randomAvatar } from './Avatar'
+import { Avatar, DEFAULT_AVATAR, randomAvatar } from './Avatar'
+import { AvatarPartOptions } from './AvatarPartOptions'
 
 function randomCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -90,26 +91,7 @@ export function Onboarding({ user }: { user: User }) {
 
         <div className="onboarding-customizer">
           <div className="onboarding-value"><span>1</span><p><strong>名前とアイコンを決める</strong><small>次のホームで友達追加と「ひま！」をすぐ試せます。</small></p></div>
-          <div className="avatar-options">
-            {AVATAR_CHOICES.map((choice) => (
-              <div className="avatar-option-row" key={choice.key}>
-                <span>{choice.label}</span>
-                <div>
-                  {choice.values.map((value) => (
-                    <button
-                      type="button"
-                      key={value}
-                      className={`swatch ${choice.previews ? 'swatch--part' : ''} swatch--${choice.key}-${value} ${avatar[choice.key] === value ? 'is-selected' : ''}`}
-                      onClick={() => setAvatar((current) => ({ ...current, [choice.key]: value }))}
-                      aria-label={`${choice.label}を${choice.previews?.[value] ?? value}にする`}
-                    >
-                      {choice.previews?.[value] ?? (avatar[choice.key] === value && <Check size={14} />)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <AvatarPartOptions avatar={avatar} onSelect={(key, value) => setAvatar((current) => ({ ...current, [key]: value }))} />
 
           <form onSubmit={save} className="name-form">
             <label>

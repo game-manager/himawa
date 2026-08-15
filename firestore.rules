@@ -36,9 +36,9 @@ service cloud.firestore {
         && avatar.keys().hasOnly(['skin', 'hair', 'hairStyle', 'mouth', 'hat', 'outfit', 'background', 'photoUrl'])
         && avatar.skin is string && avatar.hair is string
         && avatar.outfit is string && avatar.background is string
-        && (!('hairStyle' in avatar) || avatar.hairStyle in ['soft', 'bob', 'short', 'wave'])
-        && (!('mouth' in avatar) || avatar.mouth in ['smile', 'open', 'grin', 'calm'])
-        && (!('hat' in avatar) || avatar.hat in ['none', 'cap', 'beanie', 'flower'])
+        && (!('hairStyle' in avatar) || avatar.hairStyle in ['soft', 'bob', 'short', 'wave', 'center', 'spiky', 'bun', 'ponytail', 'curly', 'long'])
+        && (!('mouth' in avatar) || avatar.mouth in ['smile', 'open', 'grin', 'calm', 'laugh', 'pout', 'smirk', 'tongue', 'tiny', 'cheer'])
+        && (!('hat' in avatar) || avatar.hat in ['none', 'cap', 'beanie', 'flower', 'bucket', 'beret', 'headband', 'crown', 'ribbon', 'hood'])
         && (!('photoUrl' in avatar) || (
           avatar.photoUrl is string
           && avatar.photoUrl.size() >= 100

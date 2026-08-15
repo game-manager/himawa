@@ -1,8 +1,9 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
-import { Check, ImagePlus, Shuffle, Trash2 } from 'lucide-react'
+import { ImagePlus, Shuffle, Trash2 } from 'lucide-react'
 import type { AvatarConfig } from '../lib/models'
 import { avatarWithoutPhoto, prepareAvatarPhoto } from '../lib/avatarImage'
-import { Avatar, AVATAR_CHOICES, DEFAULT_AVATAR, randomAvatar, type AvatarPartKey } from './Avatar'
+import { Avatar, randomAvatar, type AvatarPartKey } from './Avatar'
+import { AvatarPartOptions } from './AvatarPartOptions'
 
 export function AvatarEditor({ current, busy, onSave }: { current: AvatarConfig; busy: boolean; onSave: (avatar: AvatarConfig) => void }) {
   const [avatar, setAvatar] = useState(current)
@@ -38,11 +39,7 @@ export function AvatarEditor({ current, busy, onSave }: { current: AvatarConfig;
     </div>
     <p className="avatar-photo-hint">画像は中央を正方形に切り抜き、端末内で軽くしてから保存します。</p>
     {error && <p className="form-error" role="alert">{error}</p>}
-    <div className="avatar-options avatar-editor__parts">
-      {AVATAR_CHOICES.map((choice) => <div className="avatar-option-row" key={choice.key}>
-        <span>{choice.label}</span><div>{choice.values.map((value) => { const selected = !avatar.photoUrl && (avatar[choice.key] ?? DEFAULT_AVATAR[choice.key]) === value; return <button type="button" key={value} className={`swatch ${choice.previews ? 'swatch--part' : ''} swatch--${choice.key}-${value} ${selected ? 'is-selected' : ''}`} onClick={() => updatePart(choice.key, value)} aria-label={`${choice.label}を${choice.previews?.[value] ?? value}にする`}>{choice.previews?.[value] ?? (selected && <Check size={14} />)}</button> })}</div>
-      </div>)}
-    </div>
+    <AvatarPartOptions avatar={avatar} className="avatar-editor__parts" onSelect={updatePart} />
     <button className="primary-button avatar-save-button" type="submit" disabled={busy || processing}>{busy ? '保存中…' : 'このアイコンにする'}</button>
   </form>
 }

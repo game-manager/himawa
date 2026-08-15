@@ -44,8 +44,10 @@ describe('HIMAWA Firestore rules', () => {
     const alice = testEnv.authenticatedContext('alice').firestore()
     const photoAvatar = { ...avatar, photoUrl: 'data:image/jpeg;base64,' + 'A'.repeat(120) }
     const partsAvatar = { ...avatar, hairStyle: 'bob', mouth: 'grin', hat: 'cap' }
+    const expandedPartsAvatar = { ...avatar, hairStyle: 'ponytail', mouth: 'tongue', hat: 'beret' }
     await assertSucceeds(setDoc(doc(alice, 'users', 'alice'), { ...profile('alice', 'ALICE2'), avatar: photoAvatar }))
     await assertSucceeds(updateDoc(doc(alice, 'users', 'alice'), { avatar: partsAvatar }))
+    await assertSucceeds(updateDoc(doc(alice, 'users', 'alice'), { avatar: expandedPartsAvatar }))
     await assertSucceeds(setDoc(doc(alice, 'publicProfiles', 'alice'), {
       uid: 'alice', displayName: 'ありす', avatar: photoAvatar, discoverable: true,
     }))

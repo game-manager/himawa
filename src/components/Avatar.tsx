@@ -2,21 +2,28 @@ import type { AvatarConfig } from '../lib/models'
 
 type Props = { config: AvatarConfig; size?: 'small' | 'medium' | 'large'; status?: string | null }
 
-const skinColors: Record<string, string> = { peach: '#f6c5a8', honey: '#d99c72', cocoa: '#9b6548', rose: '#efb0a6' }
-const hairColors: Record<string, string> = { ink: '#2f2927', chestnut: '#755038', coral: '#dd6f62', violet: '#6f62a8' }
-const outfitColors: Record<string, string> = { tomato: '#ff674d', mint: '#55c995', blue: '#5f83e6', yellow: '#f6c94d' }
-const backgroundColors: Record<string, string> = { cream: '#fff0c2', pink: '#ffe0e2', sky: '#dff1ff', lilac: '#ebe3ff' }
+const skinColors: Record<string, string> = { porcelain: '#f9d8c5', peach: '#f6c5a8', rose: '#efb0a6', sand: '#e8b58d', honey: '#d99c72', amber: '#c88459', bronze: '#ad724f', cocoa: '#9b6548', mahogany: '#754735', ebony: '#4e3028' }
+const hairColors: Record<string, string> = { ink: '#2f2927', chestnut: '#755038', auburn: '#9e4c34', blonde: '#d9ad62', ash: '#8b847c', silver: '#c6c8ce', coral: '#dd6f62', pink: '#d978a1', violet: '#6f62a8', navy: '#34466f' }
+const outfitColors: Record<string, string> = { tomato: '#ff674d', mint: '#55c995', blue: '#5f83e6', yellow: '#f6c94d', purple: '#876bd0', navy: '#40547c', pink: '#e884a6', green: '#3ca678', cream: '#e8d9bd', black: '#3d3a40' }
+const backgroundColors: Record<string, string> = { cream: '#fff0c2', pink: '#ffe0e2', sky: '#dff1ff', lilac: '#ebe3ff', mint: '#daf4e8', orange: '#ffe1c3', navy: '#ced8ef', gray: '#e7e4df', peach: '#ffd8c9', aqua: '#d6f3f3' }
+
+const hairStyles = ['soft', 'bob', 'short', 'wave', 'center', 'spiky', 'bun', 'ponytail', 'curly', 'long']
+const mouths = ['smile', 'open', 'grin', 'calm', 'laugh', 'pout', 'smirk', 'tongue', 'tiny', 'cheer']
+const hats = ['none', 'cap', 'beanie', 'flower', 'bucket', 'beret', 'headband', 'crown', 'ribbon', 'hood']
 
 export const DEFAULT_AVATAR: AvatarConfig = { skin: 'peach', hair: 'ink', hairStyle: 'soft', mouth: 'smile', hat: 'none', outfit: 'tomato', background: 'cream' }
 export type AvatarPartKey = 'skin' | 'hair' | 'hairStyle' | 'mouth' | 'hat' | 'outfit' | 'background'
-export const AVATAR_CHOICES: Array<{ key: AvatarPartKey; label: string; values: string[]; previews?: Record<string, string> }> = [
-  { key: 'skin', label: '肌', values: ['peach', 'honey', 'cocoa', 'rose'] },
-  { key: 'hair', label: '髪色', values: ['ink', 'chestnut', 'coral', 'violet'] },
-  { key: 'hairStyle', label: '髪型', values: ['soft', 'bob', 'short', 'wave'], previews: { soft: 'ふわ', bob: 'ボブ', short: '短め', wave: 'ウェーブ' } },
-  { key: 'mouth', label: '口', values: ['smile', 'open', 'grin', 'calm'], previews: { smile: '⌣', open: '○', grin: '▽', calm: '―' } },
-  { key: 'hat', label: '帽子', values: ['none', 'cap', 'beanie', 'flower'], previews: { none: 'なし', cap: 'キャップ', beanie: 'ニット', flower: '花' } },
-  { key: 'outfit', label: '服', values: ['tomato', 'mint', 'blue', 'yellow'] },
-  { key: 'background', label: '背景', values: ['cream', 'pink', 'sky', 'lilac'] },
+export type AvatarChoice = { key: AvatarPartKey; label: string; values: string[]; previews?: Record<string, string> }
+const avatarColorMaps: Partial<Record<AvatarPartKey, Record<string, string>>> = { skin: skinColors, hair: hairColors, outfit: outfitColors, background: backgroundColors }
+export function avatarSwatchColor(key: AvatarPartKey, value: string) { return avatarColorMaps[key]?.[value] }
+export const AVATAR_CHOICES: AvatarChoice[] = [
+  { key: 'skin', label: '肌', values: ['porcelain', 'peach', 'rose', 'sand', 'honey', 'amber', 'bronze', 'cocoa', 'mahogany', 'ebony'] },
+  { key: 'hair', label: '髪色', values: ['ink', 'chestnut', 'auburn', 'blonde', 'ash', 'silver', 'coral', 'pink', 'violet', 'navy'] },
+  { key: 'hairStyle', label: '髪型', values: hairStyles, previews: { soft: 'ふわ', bob: 'ボブ', short: '短め', wave: 'ウェーブ', center: 'センター', spiky: 'ツンツン', bun: 'お団子', ponytail: 'ポニー', curly: 'カーリー', long: 'ロング' } },
+  { key: 'mouth', label: '口', values: mouths, previews: { smile: '⌣', open: '○', grin: '▽', calm: '―', laugh: 'D', pout: '●', smirk: '⌁', tongue: 'ᵕ', tiny: '・', cheer: 'ᴗ' } },
+  { key: 'hat', label: '帽子', values: hats, previews: { none: 'なし', cap: 'キャップ', beanie: 'ニット', flower: '花', bucket: 'バケット', beret: 'ベレー', headband: 'バンド', crown: '王冠', ribbon: 'リボン', hood: 'フード' } },
+  { key: 'outfit', label: '服', values: ['tomato', 'mint', 'blue', 'yellow', 'purple', 'navy', 'pink', 'green', 'cream', 'black'] },
+  { key: 'background', label: '背景', values: ['cream', 'pink', 'sky', 'lilac', 'mint', 'orange', 'navy', 'gray', 'peach', 'aqua'] },
 ]
 
 export function randomAvatar(): AvatarConfig {
@@ -26,9 +33,9 @@ export function randomAvatar(): AvatarConfig {
 }
 
 export function Avatar({ config, size = 'medium', status }: Props) {
-  const hairStyle = ['soft', 'bob', 'short', 'wave'].includes(config.hairStyle ?? '') ? config.hairStyle : 'soft'
-  const mouth = ['smile', 'open', 'grin', 'calm'].includes(config.mouth ?? '') ? config.mouth : 'smile'
-  const hat = ['none', 'cap', 'beanie', 'flower'].includes(config.hat ?? '') ? config.hat : 'none'
+  const hairStyle = hairStyles.includes(config.hairStyle ?? '') ? config.hairStyle : 'soft'
+  const mouth = mouths.includes(config.mouth ?? '') ? config.mouth : 'smile'
+  const hat = hats.includes(config.hat ?? '') ? config.hat : 'none'
 
   return (
     <div className={`avatar avatar--${size}`} aria-label="アバター">

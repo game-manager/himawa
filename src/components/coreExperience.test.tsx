@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { Avatar, DEFAULT_AVATAR } from './Avatar'
+import { Avatar, AVATAR_CHOICES, DEFAULT_AVATAR } from './Avatar'
 import { AvatarEditor } from './AvatarEditor'
 import { FriendStatusCard } from './FriendStatusCard'
 import { MusicPicker } from './MusicPicker'
@@ -121,6 +121,8 @@ describe('HIMAWA core experience', () => {
     expect(editorHtml).toContain('口')
     expect(editorHtml).toContain('帽子')
     expect(editorHtml).toContain('このアイコンにする')
+    expect(AVATAR_CHOICES.every((choice) => choice.values.length === 10)).toBe(true)
+    expect(AVATAR_CHOICES.find((choice) => choice.key === 'hairStyle')?.previews?.ponytail).toBe('ポニー')
   })
 
   it('renders a branded music player with custom playback controls', () => {
