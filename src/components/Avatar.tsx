@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import type { AvatarConfig } from '../lib/models'
 
 type Props = { config: AvatarConfig; size?: 'small' | 'medium' | 'large'; status?: string | null }
@@ -16,6 +17,12 @@ export type AvatarPartKey = 'skin' | 'hair' | 'hairStyle' | 'mouth' | 'hat' | 'o
 export type AvatarChoice = { key: AvatarPartKey; label: string; values: string[]; previews?: Record<string, string> }
 const avatarColorMaps: Partial<Record<AvatarPartKey, Record<string, string>>> = { skin: skinColors, hair: hairColors, outfit: outfitColors, background: backgroundColors }
 export function avatarSwatchColor(key: AvatarPartKey, value: string) { return avatarColorMaps[key]?.[value] }
+export function avatarPartAsset(key: AvatarPartKey, value: string) {
+  const folders: Partial<Record<AvatarPartKey, string>> = { hairStyle: 'hair', mouth: 'mouth', hat: 'accessory', outfit: 'outfit' }
+  const folder = folders[key]
+  if (!folder || (key === 'hat' && value === 'none')) return null
+  return `${import.meta.env.BASE_URL}avatar/generated/${folder}/${value}.png`
+}
 export const AVATAR_CHOICES: AvatarChoice[] = [
   { key: 'skin', label: '肌', values: ['porcelain', 'peach', 'rose', 'sand', 'honey', 'amber', 'bronze', 'cocoa', 'mahogany', 'ebony'] },
   { key: 'hair', label: '髪色', values: ['ink', 'chestnut', 'auburn', 'blonde', 'ash', 'silver', 'coral', 'pink', 'violet', 'navy'] },
@@ -33,22 +40,32 @@ export function randomAvatar(): AvatarConfig {
 }
 
 export function Avatar({ config, size = 'medium', status }: Props) {
-  const hairStyle = hairStyles.includes(config.hairStyle ?? '') ? config.hairStyle : 'soft'
-  const mouth = mouths.includes(config.mouth ?? '') ? config.mouth : 'smile'
-  const hat = hats.includes(config.hat ?? '') ? config.hat : 'none'
+  const configuredHairStyle = config.hairStyle ?? ''
+  const configuredMouth = config.mouth ?? ''
+  const configuredHat = config.hat ?? ''
+  const hairStyle = hairStyles.includes(configuredHairStyle) ? configuredHairStyle : 'soft'
+  const mouth = mouths.includes(configuredMouth) ? configuredMouth : 'smile'
+  const hat = hats.includes(configuredHat) ? configuredHat : 'none'
+  const hairAsset = avatarPartAsset('hairStyle', hairStyle)!
+  const hairMaskStyle: CSSProperties = {
+    background: hairColors[config.hair] ?? hairColors.ink,
+    maskImage: `url("${hairAsset}")`,
+    WebkitMaskImage: `url("${hairAsset}")`,
+  }
 
   return (
     <div className={`avatar avatar--${size}`} aria-label="アバター">
       <div className="avatar__canvas" style={{ background: backgroundColors[config.background] ?? backgroundColors.cream }}>
         {config.photoUrl ? <img className="avatar__photo" src={config.photoUrl} alt="" /> : <>
           <div className="avatar__body" style={{ background: outfitColors[config.outfit] ?? outfitColors.tomato }} />
+          <img className="avatar__generated-outfit" src={avatarPartAsset('outfit', config.outfit) ?? ''} alt="" aria-hidden="true" />
           <div className="avatar__neck" style={{ background: skinColors[config.skin] ?? skinColors.peach }} />
           <div className="avatar__head" style={{ background: skinColors[config.skin] ?? skinColors.peach }}>
-            <div className={`avatar__hair avatar__hair--${hairStyle}`} style={{ background: hairColors[config.hair] ?? hairColors.ink }} />
+            <span className="avatar__generated-hair" style={hairMaskStyle} aria-hidden="true" />
             <span className="avatar__eye avatar__eye--left" />
             <span className="avatar__eye avatar__eye--right" />
-            <span className={`avatar__mouth avatar__mouth--${mouth}`} />
-            {hat !== 'none' && <span className={`avatar__hat avatar__hat--${hat}`} aria-hidden="true" />}
+            <img className="avatar__generated-mouth" src={avatarPartAsset('mouth', mouth) ?? ''} alt="" aria-hidden="true" />
+            {hat !== 'none' && <img className={`avatar__generated-accessory avatar__generated-accessory--${hat}`} src={avatarPartAsset('hat', hat) ?? ''} alt="" aria-hidden="true" />}
           </div>
         </>}
       </div>
