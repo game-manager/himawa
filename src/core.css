@@ -63,6 +63,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .friends-empty-state p { max-width: 340px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.8; }
 .friends-empty-state > div { width: min(100%,340px); margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .friends-empty-state .primary-button, .friends-empty-state .secondary-button { min-height: 46px; font-size: 10px; }
+.friends-empty-state--quiet { min-height: 190px; }
+.friends-empty-state--quiet > div { grid-template-columns: minmax(0, 260px); justify-content: center; }
 .inline-error { padding: 18px; border: 1px solid #f0c9c4; border-radius: 18px; background: #fff3f1; color: #9a382f; }
 .inline-error strong { font-size: 12px; }.inline-error p { margin: 4px 0 0; font-size: 9px; }
 .dm-inline-error { margin-bottom: 12px; }

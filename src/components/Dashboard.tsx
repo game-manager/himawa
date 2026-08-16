@@ -360,6 +360,7 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
   const [pendingConversationId, setPendingConversationId] = useState('')
   const [now, setNow] = useState(Date.now())
   const coreActionLock = useRef(false)
+  const friendIdsRef = useRef<string[]>([])
   const friendSubscriptions = useRef<Map<string, () => void>>(new Map())
   const profileCache = useRef<Map<string, PublicProfile>>(new Map())
   const statusCache = useRef<Map<string, StatusShare | null>>(new Map())
@@ -375,13 +376,14 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
     if (availabilityDifference) return availabilityDifference
     return (bStatus?.updatedAt ?? 0) - (aStatus?.updatedAt ?? 0) || a.profile.displayName.localeCompare(b.profile.displayName, 'ja')
   }), [friends, now])
-  const invitableCount = useMemo(() => sortedFriends.filter((friend) => {
+  const invitableFriends = useMemo(() => sortedFriends.filter((friend) => {
     const status = normalizeStatus(friend.status, now)
     return status && getAvailability(status) !== 'busy'
-  }).length, [now, sortedFriends])
+  }), [now, sortedFriends])
+  const invitableCount = invitableFriends.length
 
   function refreshFriends() {
-    setFriends(friendIds.map((uid) => {
+    setFriends(friendIdsRef.current.map((uid) => {
       const friendProfile = profileCache.current.get(uid)
       return friendProfile ? { profile: friendProfile, status: statusCache.current.get(uid) ?? null } : null
     }).filter((item): item is FriendView => Boolean(item)).sort((a, b) => a.profile.displayName.localeCompare(b.profile.displayName, 'ja')))
@@ -403,7 +405,9 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
   }, [profile.avatar, profile.bio, profile.currentStatus, profile.defaultStatusVisibility, profile.discoverable, profile.displayName, user.uid])
 
   useEffect(() => onSnapshot(collection(db, 'users', user.uid, 'friends'), (snapshot) => {
-    setFriendIds(snapshot.docs.map((item) => (item.data() as FriendEntry).uid))
+    const nextFriendIds = snapshot.docs.map((item) => (item.data() as FriendEntry).uid)
+    friendIdsRef.current = nextFriendIds
+    setFriendIds(nextFriendIds)
     setFriendsReady(true)
     setFriendsError(false)
   }, () => {
@@ -932,8 +936,9 @@ export function Dashboard({ user, profile, isAdmin = false }: { user: User; prof
             <div className="section-heading"><div><p className="section-kicker">FRIENDS NOW</p><h2>今、誘える友達</h2></div><span>{invitableCount}人</span></div>
             {friendsError ? <div className="inline-error" role="alert"><strong>友達の状態を読み込めませんでした</strong><p>通信を確認して、少し待ってから再読み込みしてください。</p></div>
               : !friendsReady || (friendIds.length > 0 && friends.length < friendIds.length) ? <div className="friend-skeleton-list" aria-label="友達を読み込み中">{[0, 1, 2].map((item) => <div className="friend-skeleton" key={item}><i /><div><span /><span /><span /></div></div>)}</div>
-                : sortedFriends.length ? <div className="friend-status-list">{sortedFriends.map(renderFriendCard)}</div>
-                  : <div className="friends-empty-state"><span aria-hidden="true">🌻</span><h3>友達を追加して、<br />今ひまな人を見つけよう</h3><p>友達コードか招待リンクで、知っている友達とだけつながれます。</p><div><button className="primary-button" onClick={() => setModal('invite')}><Plus size={17} /> 友達を追加</button><button className="secondary-button" onClick={shareInvite}><Share2 size={17} /> 招待リンク</button></div></div>}
+                : invitableFriends.length ? <div className="friend-status-list">{invitableFriends.map(renderFriendCard)}</div>
+                  : friendIds.length ? <div className="friends-empty-state friends-empty-state--quiet"><span aria-hidden="true">🌙</span><h3>今、誘える友達はいません</h3><p>友達が「ひま！」か「誘われたら行ける」にすると、ここに表示されます。</p><div><button className="secondary-button" onClick={() => setTab('friends')}><UsersRound size={17} /> 友達をすべて見る</button></div></div>
+                    : <div className="friends-empty-state"><span aria-hidden="true">🌻</span><h3>友達を追加して、<br />今ひまな人を見つけよう</h3><p>友達コードか招待リンクで、知っている友達とだけつながれます。</p><div><button className="primary-button" onClick={() => setModal('invite')}><Plus size={17} /> 友達を追加</button><button className="secondary-button" onClick={shareInvite}><Share2 size={17} /> 招待リンク</button></div></div>}
           </section>
         </div>}
 
